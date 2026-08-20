@@ -1,8 +1,13 @@
 const DEFAULT_BACKENDS = ["http://localhost:3010", "http://localhost:3000"];
 const OPEN_STATUSES = "NEW,CLAIMED,IN_PROGRESS,DEFERRED";
-const CAPTURE_SESSION_KEY = "resumeCaptureDraftV1";
-const emptyCapture = () => ({ campaignId: "", pageUrl: "", segments: [] });
-const state = { backend: DEFAULT_BACKENDS[0], token: "", email: "", health: null, tasks: [], campaigns: [], activeTask: null, candidates: [], feedbackTaskId: "", capture: emptyCapture() };
+const LEGACY_CAPTURE_SESSION_KEY = "resumeCaptureDraftV1";
+const SCAN_INTERVAL_MS = 1500;
+const SCAN_MAX_DURATION_MS = 60_000;
+const MAX_BUFFERED_FRAMES = 30;
+const MAX_UPLOAD_FRAMES = 10;
+const { fingerprintDifference, selectKeyframes } = globalThis.HuntingScanUtils;
+const emptyScanner = () => ({ scanId: "", status: "idle", mode: "", tabId: null, windowId: null, pageUrl: "", synthetic: false, campaignId: "", legalBasis: "", startedAt: 0, frames: [], lastFingerprint: null, currentSample: null, sampleTimer: null, uiTimer: null, stopTimer: null, stream: null, processed: 0, processingTotal: 0, failure: "" });
+const state = { backend: DEFAULT_BACKENDS[0], token: "", email: "", health: null, tasks: [], campaigns: [], activeTask: null, candidates: [], feedbackTaskId: "", scanner: emptyScanner() };
 const byId = (id) => document.getElementById(id);
 
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]); }
@@ -55,8 +60,8 @@ async function login() {
   } catch (error) { showToast(error.message, "error"); } finally { setButtonLoading(button, false); }
 }
 
-async function signOut(notify = true) { state.token = ""; state.tasks = []; state.capture = emptyCapture(); await Promise.all([chrome.storage.local.remove("token"), chrome.storage.session.remove(CAPTURE_SESSION_KEY)]); showWorkspace(false); if (notify) showToast("已退出内部登录"); }
-async function loadWorkspace() { await Promise.all([loadTasks(), loadCampaigns()]); await restoreCapture(); renderHealth(); }
+async function signOut(notify = true) { stopScanRuntime(); state.token = ""; state.tasks = []; state.scanner = emptyScanner(); await Promise.all([chrome.storage.local.remove("token"), chrome.storage.session.remove(LEGACY_CAPTURE_SESSION_KEY)]); showWorkspace(false); if (notify) showToast("已退出内部登录"); }
+async function loadWorkspace() { await Promise.all([loadTasks(), loadCampaigns()]); await chrome.storage.session.remove(LEGACY_CAPTURE_SESSION_KEY); renderScanner(); renderHealth(); }
 
 async function loadCampaigns() {
   try {
@@ -129,32 +134,6 @@ async function dataUrlHash(value) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function persistCapture() { await chrome.storage.session.set({ [CAPTURE_SESSION_KEY]: state.capture }); }
-async function restoreCapture() {
-  const saved = await chrome.storage.session.get(CAPTURE_SESSION_KEY);
-  const draft = saved[CAPTURE_SESSION_KEY];
-  state.capture = draft && Array.isArray(draft.segments) ? draft : emptyCapture();
-  if (state.capture.campaignId && state.campaigns.some((item) => item.id === state.capture.campaignId)) byId("capture-campaign").value = state.capture.campaignId;
-  renderCapture();
-}
-
-function renderCapture() {
-  const segments = state.capture.segments;
-  const last = segments.at(-1);
-  byId("capture-counter").textContent = `${segments.length} / 10`;
-  byId("capture-candidate").textContent = segments.map((segment) => segment.candidateName).find(Boolean) || "尚未识别";
-  byId("capture-section").textContent = last?.visibleSection || (segments.length ? `第 ${segments.length} 屏` : "等待第一屏");
-  byId("capture-campaign").disabled = segments.length > 0;
-  byId("undo-capture").disabled = segments.length === 0;
-  byId("clear-capture").disabled = segments.length === 0;
-  byId("finalize-capture").disabled = segments.length === 0;
-  byId("capture-screen").disabled = segments.length >= 10;
-  const guide = byId("capture-guide");
-  guide.querySelector("strong").textContent = segments.length ? (last?.hasMoreBelow ? "继续向下滚动" : "已接近简历底部") : "从简历顶部开始";
-  guide.querySelector("span").textContent = segments.length ? (last?.hasMoreBelow ? "保留上一屏底部约 15% 的内容，再截取下一屏。" : "确认没有遗漏后，可完成入库；也可继续补充一屏。") : "截取当前屏后，向下滚动约 80%，保留一小段重叠再继续。";
-  byId("capture-segments").innerHTML = segments.length ? segments.map((segment) => { const warnings = Array.isArray(segment.warnings) ? segment.warnings : []; return `<article class="capture-segment"><span>${String(segment.sequence).padStart(2, "0")}</span><div><strong>${escapeHtml(segment.visibleSection || `第 ${segment.sequence} 屏`)}</strong><p>${escapeHtml(segment.text.split("\n").filter(Boolean).slice(0, 2).join(" · "))}</p></div><small class="${warnings.length ? "capture-warning" : ""}" title="${escapeHtml(warnings.join("；"))}">${warnings.length ? "需复核" : `${segment.text.length} 字`}</small></article>`; }).join("") : '<div class="empty-state compact"><strong>还没有截图</strong><p>打开一位候选人的 BOSS 简历详情页并回到顶部。</p></div>';
-}
-
 function validateCaptureBasis() {
   const campaignId = byId("capture-campaign").value;
   const legalBasis = byId("capture-legal-basis").value.trim();
@@ -163,52 +142,231 @@ function validateCaptureBasis() {
   return { campaignId, legalBasis };
 }
 
-async function captureResumeScreen() {
-  const button = byId("capture-screen");
-  try {
-    const basis = validateCaptureBasis();
-    if (state.capture.segments.length >= 10) throw new Error("一份简历最多采集 10 屏");
-    const { tab, synthetic, boss } = await currentScreenshotTab();
-    const pageUrl = normalizedPageUrl(tab.url);
-    if (state.capture.pageUrl && normalizedPageUrl(state.capture.pageUrl) !== pageUrl) throw new Error("请回到本次采集的同一个候选人详情页");
-    if (state.capture.campaignId && state.capture.campaignId !== basis.campaignId) throw new Error("本次采集的人才画像不能中途更换");
-    if (boss && !window.confirm("当前可见 BOSS 简历截图将发送至已配置的 Sub2API，仅用于提取本岗位所需的履历文本。截图不会落盘，是否继续？")) return;
-    setButtonLoading(button, true, "正在识别…");
-    const imageDataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg", quality: 84 });
-    const clientHash = await dataUrlHash(imageDataUrl);
-    if (state.capture.segments.some((segment) => segment.screenshotHash === clientHash)) throw new Error("这一屏已经采集过，请向下滚动后重试");
-    const segment = await api("/api/plugin/resume-capture/segment", { method: "POST", body: JSON.stringify({ campaignId: basis.campaignId, authorizationConfirmed: true, pageUrl: tab.url, synthetic, sequence: state.capture.segments.length + 1, imageDataUrl }) });
-    if (segment.screenshotHash !== clientHash) throw new Error("截图校验失败，请重试");
-    const knownName = state.capture.segments.map((item) => item.candidateName).find(Boolean);
-    if (knownName && segment.candidateName && normalizedCandidateName(knownName) !== normalizedCandidateName(segment.candidateName)) throw new Error(`当前屏识别为${segment.candidateName}，与本次候选人${knownName}不一致`);
-    state.capture = { campaignId: basis.campaignId, pageUrl: tab.url, segments: [...state.capture.segments, segment] };
-    await persistCapture(); renderCapture(); showToast(`第 ${segment.sequence} 屏已识别，截图未保存`);
-  } catch (error) { showToast(error.message, "error"); } finally { setButtonLoading(button, false); renderCapture(); }
+function formatElapsed(milliseconds) {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-async function undoCapture() { state.capture.segments.pop(); if (!state.capture.segments.length) state.capture = emptyCapture(); await persistCapture(); renderCapture(); byId("capture-result").hidden = true; showToast("已撤销上一屏"); }
-async function clearCapture() { if (!window.confirm("确定清空本次已识别的简历文本吗？")) return; state.capture = emptyCapture(); await chrome.storage.session.remove(CAPTURE_SESSION_KEY); renderCapture(); byId("capture-result").hidden = true; showToast("本次采集已清空"); }
-async function finalizeCapture() {
-  const button = byId("finalize-capture");
+function renderScanner() {
+  const scanner = state.scanner;
+  const guide = byId("capture-guide");
+  const elapsed = scanner.startedAt ? Math.min(Date.now() - scanner.startedAt, SCAN_MAX_DURATION_MS) : 0;
+  const states = {
+    idle: ["等待开始", "先回到简历顶部", "点击开始后，用 20-40 秒匀速滚动到底部。"],
+    starting: ["正在启动", "正在建立临时画面流", "请保持当前 BOSS 简历页面可见。"],
+    scanning: ["扫描中", "请匀速向下滚动", "到达简历底部后，点击“完成扫描并识别”。"],
+    processing: [`正在识别 ${scanner.processed}/${scanner.processingTotal}`, "正在提取履历事实", "请保持侧边栏打开，完成后会自动合并并永久入库。"],
+    failed: ["需要处理", "本次识别未完成", scanner.failure || "可重新识别内存中的关键帧，或取消后重新扫描。"],
+  };
+  const [statusLabel, title, detail] = states[scanner.status] || states.idle;
+  byId("scan-status").textContent = statusLabel;
+  byId("scan-frame-count").textContent = scanner.status === "processing" ? `${scanner.processingTotal} 帧` : `${scanner.frames.length} 临时帧`;
+  byId("scan-timer").textContent = formatElapsed(elapsed);
+  guide.className = `capture-guide${scanner.status === "scanning" ? " recording" : scanner.status === "processing" ? " processing" : ""}`;
+  guide.querySelector("strong").textContent = title;
+  guide.querySelector("span").textContent = detail;
+  const progress = scanner.status === "processing" ? (scanner.processingTotal ? scanner.processed / scanner.processingTotal : 0) : elapsed / SCAN_MAX_DURATION_MS;
+  byId("scan-track-fill").style.width = `${Math.max(0, Math.min(100, Math.round(progress * 100)))}%`;
+  const displayedFrames = scanner.status === "processing" ? scanner.processingTotal : Math.min(scanner.frames.length, MAX_UPLOAD_FRAMES);
+  byId("scan-frame-strip").innerHTML = Array.from({ length: MAX_UPLOAD_FRAMES }, (_, index) => `<span class="${index < displayedFrames ? (scanner.status === "processing" && index >= scanner.processed ? "processing" : "captured") : ""}"></span>`).join("");
+  const locked = ["starting", "scanning", "processing", "failed"].includes(scanner.status);
+  byId("capture-campaign").disabled = locked;
+  byId("capture-legal-basis").disabled = locked;
+  byId("capture-authorization").disabled = locked;
+  byId("scan-start").hidden = scanner.status !== "idle";
+  byId("scan-stop").hidden = scanner.status !== "scanning";
+  byId("scan-stop").disabled = scanner.frames.length === 0;
+  byId("scan-retry").hidden = scanner.status !== "failed" || scanner.frames.length === 0;
+  byId("scan-cancel").hidden = !["starting", "scanning", "failed"].includes(scanner.status);
+}
+
+function captureTabStream() {
+  return new Promise((resolve, reject) => {
+    if (!chrome.tabCapture?.capture) return reject(new Error("当前 Chrome 不支持标签页画面流"));
+    chrome.tabCapture.capture({ audio: false, video: true }, (stream) => {
+      const message = chrome.runtime.lastError?.message;
+      if (message || !stream) reject(new Error(message || "无法启动标签页画面流")); else resolve(stream);
+    });
+  });
+}
+
+async function attachScanStream(stream) {
+  const video = byId("scan-video");
+  video.srcObject = stream;
+  await video.play();
+  if (video.videoWidth && video.videoHeight) return;
+  await new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error("标签页画面流未就绪")), 3500);
+    video.addEventListener("loadedmetadata", () => { window.clearTimeout(timeout); resolve(); }, { once: true });
+  });
+}
+
+function stopScanRuntime() {
+  const scanner = state.scanner;
+  if (scanner.sampleTimer) window.clearInterval(scanner.sampleTimer);
+  if (scanner.uiTimer) window.clearInterval(scanner.uiTimer);
+  if (scanner.stopTimer) window.clearTimeout(scanner.stopTimer);
+  if (scanner.stream) scanner.stream.getTracks().forEach((track) => track.stop());
+  const video = byId("scan-video");
+  if (video) video.srcObject = null;
+  scanner.sampleTimer = null; scanner.uiTimer = null; scanner.stopTimer = null; scanner.stream = null;
+}
+
+function frameFromSource(source, sourceWidth, sourceHeight) {
+  if (!sourceWidth || !sourceHeight) throw new Error("当前页面画面不可用");
+  const scale = Math.min(1, 1920 / sourceWidth, 1600 / sourceHeight);
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
+  const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height;
+  const context = canvas.getContext("2d", { alpha: false }); context.drawImage(source, 0, 0, width, height);
+  const thumbnail = document.createElement("canvas"); thumbnail.width = 64; thumbnail.height = 36;
+  const thumbnailContext = thumbnail.getContext("2d", { alpha: false, willReadFrequently: true }); thumbnailContext.drawImage(canvas, 0, 0, 64, 36);
+  const pixels = thumbnailContext.getImageData(0, 0, 64, 36).data;
+  const fingerprint = new Uint8Array(64 * 36);
+  for (let index = 0; index < fingerprint.length; index += 1) {
+    const offset = index * 4; fingerprint[index] = Math.round((pixels[offset] * 3 + pixels[offset + 1] * 6 + pixels[offset + 2]) / 10);
+  }
+  return { imageDataUrl: canvas.toDataURL("image/jpeg", 0.82), fingerprint };
+}
+
+function loadFrameImage(imageDataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image(); image.onload = () => resolve(image); image.onerror = () => reject(new Error("无法读取当前页面截图")); image.src = imageDataUrl;
+  });
+}
+
+async function currentScanFrame(scanner) {
+  if (scanner.mode === "tab-stream") {
+    const video = byId("scan-video"); return frameFromSource(video, video.videoWidth, video.videoHeight);
+  }
+  const imageDataUrl = await chrome.tabs.captureVisibleTab(scanner.windowId, { format: "jpeg", quality: 82 });
+  const image = await loadFrameImage(imageDataUrl);
+  return frameFromSource(image, image.naturalWidth, image.naturalHeight);
+}
+
+function compactFrameBuffer(scanner) {
+  const frames = scanner.frames;
+  if (frames.length < MAX_BUFFERED_FRAMES) return;
+  scanner.frames = frames.filter((_, index) => index === 0 || index === frames.length - 1 || index % 2 === 0);
+}
+
+async function sampleScanFrame() {
+  const scanner = state.scanner;
+  if (scanner.status !== "scanning") return;
+  if (scanner.currentSample) return scanner.currentSample;
+  scanner.currentSample = (async () => {
+    const { tab } = await currentScreenshotTab();
+    if (tab.id !== scanner.tabId || normalizedPageUrl(tab.url) !== normalizedPageUrl(scanner.pageUrl)) throw new Error("扫描期间切换了标签页或候选人，请取消后重新开始");
+    const frame = await currentScanFrame(scanner);
+    const difference = fingerprintDifference(scanner.lastFingerprint, frame.fingerprint);
+    const exactDuplicate = scanner.frames.some((item) => item.imageDataUrl === frame.imageDataUrl);
+    if (!exactDuplicate && (scanner.frames.length === 0 || difference >= 2.2)) {
+      compactFrameBuffer(scanner); scanner.frames.push({ ...frame, capturedAt: Date.now() }); scanner.lastFingerprint = frame.fingerprint; renderScanner();
+    }
+  })();
+  try { await scanner.currentSample; } finally { scanner.currentSample = null; }
+}
+
+function failScan(error) {
+  stopScanRuntime(); state.scanner.status = "failed"; state.scanner.failure = error instanceof Error ? error.message : "扫描未完成"; renderScanner(); showToast(state.scanner.failure, "error");
+}
+
+async function startResumeScan() {
+  if (state.scanner.status !== "idle") return;
+  const button = byId("scan-start"); button.disabled = true;
+  let scanId = "";
   try {
-    const basis = validateCaptureBasis(); if (!state.capture.segments.length) throw new Error("请先采集至少一屏简历");
-    setButtonLoading(button, true, "正在合并入库…");
-    const result = await api("/api/plugin/resume-capture/finalize", { method: "POST", body: JSON.stringify({ ...basis, authorizationConfirmed: true, segments: state.capture.segments }) });
-    const detail = result.duplicate ? "简历库中已有相同内容，未重复创建。" : `已加入增量学习队列 ${result.aiRun.id.slice(0, 8)}。`;
-    byId("capture-result").textContent = `${result.resume.fileName} 已永久入库，共合并 ${result.merged.screenCount} 屏。${detail}`; byId("capture-result").hidden = false;
-    state.capture = emptyCapture(); await chrome.storage.session.remove(CAPTURE_SESSION_KEY); renderCapture(); showToast("简历已完成入库");
-  } catch (error) { showToast(error.message, "error"); } finally { setButtonLoading(button, false); renderCapture(); }
+    const basis = validateCaptureBasis(); const { tab, synthetic, boss } = await currentScreenshotTab();
+    if (boss && !window.confirm("插件将在本次扫描中临时捕获当前可见的 BOSS 简历画面。你完成滚动后，最多 10 张关键帧会发送至已配置的 Sub2API，用于提取履历并永久入库；图片不会落盘。是否开始？")) return;
+    byId("capture-result").hidden = true;
+    scanId = crypto.randomUUID();
+    state.scanner = { ...emptyScanner(), scanId, status: "starting", tabId: tab.id, windowId: tab.windowId, pageUrl: tab.url, synthetic, campaignId: basis.campaignId, legalBasis: basis.legalBasis };
+    renderScanner();
+    let stream = null;
+    try {
+      stream = await captureTabStream();
+      if (state.scanner.scanId !== scanId) { stream.getTracks().forEach((track) => track.stop()); return; }
+      state.scanner.stream = stream; await attachScanStream(stream);
+      if (state.scanner.scanId !== scanId) { stream.getTracks().forEach((track) => track.stop()); return; }
+      state.scanner.mode = "tab-stream";
+    } catch {
+      if (stream) stream.getTracks().forEach((track) => track.stop());
+      if (state.scanner.scanId !== scanId) return;
+      state.scanner.stream = null; byId("scan-video").srcObject = null; state.scanner.mode = "viewport-sampling";
+    }
+    if (state.scanner.scanId !== scanId) return;
+    state.scanner.status = "scanning"; state.scanner.startedAt = Date.now(); renderScanner();
+    await sampleScanFrame();
+    if (state.scanner.scanId !== scanId) return;
+    state.scanner.sampleTimer = window.setInterval(() => sampleScanFrame().catch((error) => { if (state.scanner.scanId === scanId) failScan(error); }), SCAN_INTERVAL_MS);
+    state.scanner.uiTimer = window.setInterval(renderScanner, 500);
+    state.scanner.stopTimer = window.setTimeout(() => finishResumeScan(true), SCAN_MAX_DURATION_MS);
+    showToast(state.scanner.mode === "tab-stream" ? "扫描已开始，请匀速滚动简历" : "已使用兼容扫描模式，请保持当前标签页可见");
+  } catch (error) {
+    if (scanId && state.scanner.scanId !== scanId) return;
+    if (state.scanner.status === "idle") showToast(error.message, "error"); else failScan(error);
+  } finally { button.disabled = false; }
+}
+
+async function processScanFrames() {
+  const scanner = state.scanner; const frames = selectKeyframes(scanner.frames, MAX_UPLOAD_FRAMES);
+  if (!frames.length) throw new Error("没有采集到有效关键帧，请重新扫描");
+  scanner.status = "processing"; scanner.processed = 0; scanner.processingTotal = frames.length; scanner.failure = ""; renderScanner();
+  const segments = []; const skipped = [];
+  for (let index = 0; index < frames.length; index += 1) {
+    const frame = frames[index];
+    try {
+      const screenshotHash = await dataUrlHash(frame.imageDataUrl);
+      const segment = await api("/api/plugin/resume-capture/segment", { method: "POST", body: JSON.stringify({ campaignId: scanner.campaignId, authorizationConfirmed: true, pageUrl: scanner.pageUrl, synthetic: scanner.synthetic, sequence: segments.length + 1, imageDataUrl: frame.imageDataUrl }) });
+      if (segment.screenshotHash !== screenshotHash) throw new Error("截图校验失败");
+      const knownName = segments.map((item) => item.candidateName).find(Boolean);
+      if (knownName && segment.candidateName && normalizedCandidateName(knownName) !== normalizedCandidateName(segment.candidateName)) throw new Error(`识别到不同候选人：${segment.candidateName}`);
+      segments.push(segment);
+    } catch (error) {
+      if (!segments.length) throw new Error(`首帧识别失败：${error.message}`);
+      skipped.push(`第 ${index + 1} 帧：${error.message}`);
+    }
+    scanner.processed = index + 1; renderScanner();
+  }
+  if (segments.length < Math.max(1, Math.ceil(frames.length / 2))) throw new Error("超过一半关键帧识别失败，请检查页面位置后重新扫描");
+  const result = await api("/api/plugin/resume-capture/finalize", { method: "POST", body: JSON.stringify({ campaignId: scanner.campaignId, legalBasis: scanner.legalBasis, authorizationConfirmed: true, segments }) });
+  const learning = result.duplicate ? "简历库中已有相同内容，未重复创建。" : `已加入增量学习队列 ${result.aiRun.id.slice(0, 8)}。`;
+  const warning = skipped.length ? `有 ${skipped.length} 帧未采用，可在简历库核对结果。` : "";
+  byId("capture-result").textContent = `${result.resume.fileName} 已永久入库，共合并 ${result.merged.screenCount} 个关键帧。${learning}${warning}`; byId("capture-result").hidden = false;
+  state.scanner = emptyScanner(); renderScanner(); showToast("简历扫描识别已完成");
+}
+
+async function finishResumeScan(automatic = false) {
+  if (state.scanner.status !== "scanning") return;
+  const scanId = state.scanner.scanId;
+  try { await sampleScanFrame(); } catch { /* Existing keyframes can still be processed. */ }
+  if (state.scanner.scanId !== scanId || state.scanner.status !== "scanning") return;
+  stopScanRuntime();
+  if (!state.scanner.frames.length) return failScan(new Error("没有采集到有效关键帧，请重新扫描"));
+  if (automatic) showToast("扫描已达 60 秒，正在自动识别");
+  try { await processScanFrames(); } catch (error) { failScan(error); }
+}
+
+async function retryScanRecognition() {
+  if (state.scanner.status !== "failed" || !state.scanner.frames.length) return;
+  try { await processScanFrames(); } catch (error) { failScan(error); }
+}
+
+function cancelResumeScan() {
+  if (state.scanner.status === "scanning" && !window.confirm("确定取消本次扫描吗？临时关键帧会立即清除。")) return;
+  stopScanRuntime(); state.scanner = emptyScanner(); byId("capture-result").hidden = true; renderScanner(); showToast("本次扫描已取消");
 }
 
 function renderHealth() { byId("extension-version").textContent = `版本 v${chrome.runtime.getManifest().version}`; byId("settings-backend-status").textContent = state.health ? `${state.backend} · 正常` : "未连接"; byId("settings-ai-status").textContent = state.health?.ai.enabled && state.health?.ai.hasApiKey ? `${state.health.ai.model} · 已启用` : "未配置或未启用"; byId("settings-screen-status").textContent = state.health?.ai.screenAnalysisEnabled ? "已启用" : "未启用"; }
-function switchView(view) { document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.view === view)); document.querySelectorAll(".view").forEach((panel) => { panel.hidden = panel.id !== `${view}-view`; }); }
+function switchView(view) { if (["starting", "scanning", "processing"].includes(state.scanner.status) && view !== "capture") return showToast("请先完成或取消当前简历扫描", "error"); document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.view === view)); document.querySelectorAll(".view").forEach((panel) => { panel.hidden = panel.id !== `${view}-view`; }); }
 async function saveBackend() { if (!await discoverBackend(byId("manual-backend").value)) return showToast("该地址没有可用的觅才后台", "error"); byId("backend").value = state.backend; showToast("后台地址已保存"); }
 async function restore() { const saved = await chrome.storage.local.get(["backend", "token", "email"]); state.token = saved.token || ""; state.email = saved.email || ""; byId("email").value = state.email; const connected = await discoverBackend(saved.backend || DEFAULT_BACKENDS[0]); if (!state.token || !connected) return showWorkspace(false); showWorkspace(true); await loadWorkspace(); }
 
-byId("probe").addEventListener("click", () => discoverBackend(byId("backend").value)); byId("login").addEventListener("click", login); byId("logout").addEventListener("click", () => signOut()); byId("refresh").addEventListener("click", loadTasks); byId("close-analysis").addEventListener("click", () => { byId("analysis").hidden = true; }); byId("save-backend").addEventListener("click", saveBackend); byId("open-synthetic").addEventListener("click", () => chrome.tabs.create({ url: chrome.runtime.getURL("synthetic.html") })); byId("capture-screen").addEventListener("click", captureResumeScreen); byId("undo-capture").addEventListener("click", undoCapture); byId("clear-capture").addEventListener("click", clearCapture); byId("finalize-capture").addEventListener("click", finalizeCapture); byId("feedback-form").addEventListener("submit", submitFeedback);
+byId("probe").addEventListener("click", () => discoverBackend(byId("backend").value)); byId("login").addEventListener("click", login); byId("logout").addEventListener("click", () => signOut()); byId("refresh").addEventListener("click", loadTasks); byId("close-analysis").addEventListener("click", () => { byId("analysis").hidden = true; }); byId("save-backend").addEventListener("click", saveBackend); byId("open-synthetic").addEventListener("click", () => chrome.tabs.create({ url: chrome.runtime.getURL("synthetic.html") })); byId("scan-start").addEventListener("click", startResumeScan); byId("scan-stop").addEventListener("click", () => finishResumeScan(false)); byId("scan-retry").addEventListener("click", retryScanRecognition); byId("scan-cancel").addEventListener("click", cancelResumeScan); byId("feedback-form").addEventListener("submit", submitFeedback);
 document.querySelectorAll("[data-close-feedback]").forEach((button) => button.addEventListener("click", () => byId("feedback-dialog").close()));
 document.querySelector(".tabs").addEventListener("click", (event) => { const tab = event.target.closest("[data-view]"); if (tab) switchView(tab.dataset.view); });
 byId("tasks").addEventListener("click", async (event) => { const button = event.target.closest("button[data-action]"); if (!button) return; const task = taskById(button.dataset.id); if (!task) return; button.disabled = true; try { if (button.dataset.action === "claim") await claimTask(task); if (button.dataset.action === "copy") await copyTask(task); if (button.dataset.action === "open") await openBoss(task); if (button.dataset.action === "analyze") await analyze(task); if (button.dataset.action === "feedback") openFeedback(task); if (button.dataset.action === "defer") { await transitionTask(task, "DEFERRED"); showToast("任务已延期"); } } catch (error) { showToast(error.message, "error"); } finally { button.disabled = false; } });
 byId("analysis-content").addEventListener("click", async (event) => { const button = event.target.closest("button[data-action]"); if (!button) return; try { if (button.dataset.action === "greeting") await generateGreeting(Number(button.dataset.index), button); if (button.dataset.action === "copy-draft") { await navigator.clipboard.writeText(byId(`draft-${button.dataset.index}`).dataset.value); showToast("草稿已复制，请人工审核后发送"); } } catch (error) { showToast(error.message, "error"); } });
+window.addEventListener("unload", stopScanRuntime);
 
 restore();

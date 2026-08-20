@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-export const EXTENSION_VERSION = "0.3.0";
+export const EXTENSION_VERSION = "0.4.0";
 export const EXTENSION_FILE_NAME = `hunting-extension-v${EXTENSION_VERSION}.zip`;
 export const EXTENSION_ARTIFACT_PATH = join(process.cwd(), "artifacts", EXTENSION_FILE_NAME);
 export const EXTENSION_CHECKSUM_PATH = `${EXTENSION_ARTIFACT_PATH}.sha256`;

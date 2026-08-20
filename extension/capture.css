@@ -1,11 +1,14 @@
 .capture-counter {
+  min-width: 45px;
   padding: 3px 6px;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: #fff;
   color: var(--green);
   font-size: 10px;
+  font-variant-numeric: tabular-nums;
   font-weight: 800;
+  text-align: center;
   white-space: nowrap;
 }
 
@@ -14,6 +17,16 @@
   padding: 11px;
   border-left: 3px solid var(--green);
   background: var(--green-soft);
+}
+
+.capture-guide.recording {
+  border-left-color: var(--red);
+  background: #f9ecea;
+}
+
+.capture-guide.processing {
+  border-left-color: var(--blue);
+  background: var(--blue-soft);
 }
 
 .capture-guide strong,
@@ -36,37 +49,40 @@
 .capture-progress span { color: var(--muted); font-size: 8px; }
 .capture-progress strong { margin-top: 2px; overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 
-.capture-segments { margin-top: 10px; }
-.capture-segment {
-  min-height: 54px;
-  padding: 8px 9px;
+.scan-track {
+  height: 4px;
+  margin-top: 9px;
+  overflow: hidden;
+  background: #dde5e1;
+}
+
+.scan-track > div {
+  width: 0;
+  height: 100%;
+  background: var(--green);
+  transition: width .25s ease;
+}
+
+.scan-frame-strip {
+  min-height: 34px;
+  margin-top: 9px;
+  padding: 7px;
   display: grid;
-  grid-template-columns: 27px 1fr auto;
-  align-items: center;
-  gap: 8px;
+  grid-template-columns: repeat(10, 1fr);
+  align-items: end;
+  gap: 4px;
   border: 1px solid var(--line);
-  border-bottom: 0;
   background: #fff;
 }
 
-.capture-segment:last-child { border-bottom: 1px solid var(--line); }
-.capture-segment > span {
-  width: 27px;
-  height: 27px;
-  display: grid;
-  place-items: center;
-  border-radius: 4px;
-  background: var(--green-soft);
-  color: var(--green);
-  font-size: 9px;
-  font-weight: 800;
+.scan-frame-strip span {
+  height: 18px;
+  border-radius: 2px;
+  background: #e4eae7;
 }
 
-.capture-segment div { min-width: 0; }
-.capture-segment strong { display: block; font-size: 9px; }
-.capture-segment p { margin-top: 2px; overflow: hidden; color: var(--muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
-.capture-segment small { margin: 0; white-space: nowrap; }
-.capture-segment small.capture-warning { color: var(--amber); font-weight: 800; }
+.scan-frame-strip span.captured { background: var(--green); }
+.scan-frame-strip span.processing { background: var(--blue); }
 .capture-actions { margin-top: 7px; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.capture-actions:has(button[hidden] + button[hidden]) { display: none; }
 .capture-actions .button { font-size: 9px; }
-.empty-state.compact { padding: 18px 12px; }

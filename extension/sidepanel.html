@@ -31,7 +31,7 @@
     </section>
 
     <section id="workspace-view" hidden>
-      <nav class="tabs" aria-label="插件功能"><button class="tab active" data-view="tasks" type="button">任务</button><button class="tab" data-view="capture" type="button">采集简历</button><button class="tab" data-view="settings" type="button">设置</button></nav>
+      <nav class="tabs" aria-label="插件功能"><button class="tab active" data-view="tasks" type="button">任务</button><button class="tab" data-view="capture" type="button">扫描简历</button><button class="tab" data-view="settings" type="button">设置</button></nav>
       <section id="tasks-view" class="view">
         <div class="section-head"><div><h1>搜索任务</h1><p id="task-count">正在载入</p></div><button id="refresh" class="icon-button" type="button" title="刷新任务" aria-label="刷新任务">↻</button></div>
         <div id="tasks" class="task-list" aria-live="polite"></div>
@@ -39,16 +39,18 @@
       </section>
 
       <section id="capture-view" class="view" hidden>
-        <div class="section-head"><div><h1>采集 BOSS 简历</h1><p>多屏识别后合并为一份永久简历</p></div><span id="capture-counter" class="capture-counter">0 / 10</span></div>
-        <div id="capture-guide" class="capture-guide"><strong>从简历顶部开始</strong><span>截取当前屏后，向下滚动约 80%，保留一小段重叠再继续。</span></div>
+        <div class="section-head"><div><h1>扫描 BOSS 简历</h1><p>开始后匀速滚动，完成时自动识别入库</p></div><span id="scan-timer" class="capture-counter">00:00</span></div>
+        <div id="capture-guide" class="capture-guide"><strong>先回到简历顶部</strong><span>点击开始后，用 20-40 秒匀速滚动到底部。</span></div>
         <label for="capture-campaign">人才画像</label><select id="capture-campaign"></select>
         <label for="capture-legal-basis">来源及处理依据</label><textarea id="capture-legal-basis" rows="3" placeholder="例如：用于当前岗位招聘评估，按公司招聘数据制度处理"></textarea>
-        <label class="check-row"><input id="capture-authorization" type="checkbox"><span>我已确认当前招聘处理依据，并同意识别文本入库；截图本身不会保存。</span></label>
-        <div class="capture-progress"><div><span>当前候选人</span><strong id="capture-candidate">尚未识别</strong></div><div><span>最近区域</span><strong id="capture-section">等待第一屏</strong></div></div>
-        <div id="capture-segments" class="capture-segments"><div class="empty-state compact"><strong>还没有截图</strong><p>打开一位候选人的 BOSS 简历详情页并回到顶部。</p></div></div>
-        <button id="capture-screen" class="button primary full" type="button">截取当前屏</button>
-        <div class="capture-actions"><button id="undo-capture" class="button" type="button" disabled>撤销上一屏</button><button id="clear-capture" class="button" type="button" disabled>清空本次</button></div>
-        <button id="finalize-capture" class="button full" type="button" disabled>完成并永久入库</button>
+        <label class="check-row"><input id="capture-authorization" type="checkbox"><span>我已确认当前招聘处理依据；扫描关键帧将在完成后发送至 Sub2API，图片不会保存。</span></label>
+        <div class="capture-progress"><div><span>扫描状态</span><strong id="scan-status">等待开始</strong></div><div><span>关键帧</span><strong id="scan-frame-count">0 帧</strong></div></div>
+        <div class="scan-track" aria-hidden="true"><div id="scan-track-fill"></div></div>
+        <div id="scan-frame-strip" class="scan-frame-strip"><span></span></div>
+        <video id="scan-video" autoplay muted playsinline hidden></video>
+        <button id="scan-start" class="button primary full" type="button">开始扫描</button>
+        <button id="scan-stop" class="button primary full" type="button" hidden>完成扫描并识别</button>
+        <div class="capture-actions"><button id="scan-retry" class="button" type="button" hidden>重新识别</button><button id="scan-cancel" class="button" type="button" hidden>取消本次</button></div>
         <div id="capture-result" class="result-box" hidden></div>
       </section>
 
@@ -57,7 +59,7 @@
         <div class="status-list"><div><span>后台连接</span><strong id="settings-backend-status">待检测</strong></div><div><span>Sub2API</span><strong id="settings-ai-status">待检测</strong></div><div><span>截图分析</span><strong id="settings-screen-status">待检测</strong></div></div>
         <label for="manual-backend">后台地址</label><input id="manual-backend" type="url" spellcheck="false">
         <div class="button-row"><button id="save-backend" class="button" type="button">保存并重连</button><button id="open-synthetic" class="button" type="button">打开合成验收页</button></div>
-        <div class="boundary-note"><strong>截图验收</strong><span>合成页不含真实候选人数据。真实 BOSS 截图仍会在发送前逐次确认。</span></div>
+        <div class="boundary-note"><strong>扫描验收</strong><span>合成页不含真实候选人数据。真实 BOSS 简历扫描会在开始时确认一次本次范围和用途。</span></div>
         <button id="logout" class="button danger full" type="button">退出内部登录</button>
       </section>
     </section>
@@ -66,6 +68,7 @@
   <dialog id="feedback-dialog"><form method="dialog" id="feedback-form"><div class="section-head"><div><h2>提交任务反馈</h2><p id="feedback-task-title"></p></div><button class="icon-button" data-close-feedback type="button" title="关闭" aria-label="关闭">×</button></div><div class="number-grid"><label for="result-count">结果人数<input id="result-count" type="number" min="0" max="10000" value="0"></label><label for="qualified-count">符合画像<input id="qualified-count" type="number" min="0" max="10000" value="0"></label><label for="conversation-count">有效沟通<input id="conversation-count" type="number" min="0" max="10000" value="0"></label></div><label for="feedback-note">备注</label><textarea id="feedback-note" rows="3" placeholder="可记录关键词偏差或候选人共性"></textarea><div class="dialog-actions"><button class="button" data-close-feedback type="button">取消</button><button id="submit-feedback" class="button primary" value="default" type="submit">提交反馈</button></div></form></dialog>
   <p id="toast" role="status" aria-live="polite"></p>
   <footer>人工操作 · 可追溯反馈 · 不自动发送</footer>
+  <script src="scan-utils.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>

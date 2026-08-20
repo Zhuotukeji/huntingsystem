@@ -6,7 +6,7 @@ import vm from "node:vm";
 const root = process.cwd();
 const extensionDirectory = join(root, "extension");
 const artifactDirectory = join(root, "artifacts");
-const expectedVersion = "0.3.0";
+const expectedVersion = "0.4.0";
 const artifactName = `hunting-extension-v${expectedVersion}.zip`;
 
 function crc32(buffer: Buffer) {
@@ -38,7 +38,7 @@ function check() {
   assert(manifest.side_panel?.default_path === "sidepanel.html", "side panel entry is missing");
   assert(!manifest.content_scripts, "content_scripts are prohibited");
   const permissions = new Set<string>(manifest.permissions || []);
-  for (const required of ["activeTab", "storage", "sidePanel", "tabs"]) assert(permissions.has(required), `permission ${required} is required`);
+  for (const required of ["activeTab", "storage", "sidePanel", "tabCapture", "tabs"]) assert(permissions.has(required), `permission ${required} is required`);
   for (const prohibited of ["cookies", "scripting", "webRequest", "debugger", "downloads", "history"]) assert(!permissions.has(prohibited), `permission ${prohibited} is prohibited`);
   const hosts: string[] = manifest.host_permissions || [];
   assert(hosts.length === 2 && hosts.includes("http://localhost/*") && hosts.includes("http://127.0.0.1/*"), "host_permissions must be limited to local backend hosts");
@@ -50,13 +50,25 @@ function check() {
     assert(data.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex")), `icon${size}.png is not a PNG`);
     assert(data.readUInt32BE(16) === size && data.readUInt32BE(20) === size, `icon${size}.png dimensions are invalid`);
   }
-  for (const required of ["background.js", "sidepanel.html", "sidepanel.css", "capture.css", "sidepanel.js", "synthetic.html", "synthetic.css", "README.md"]) assert(existsSync(join(extensionDirectory, required)), `${required} is missing`);
+  for (const required of ["background.js", "sidepanel.html", "sidepanel.css", "capture.css", "scan-utils.js", "sidepanel.js", "synthetic.html", "synthetic.css", "README.md"]) assert(existsSync(join(extensionDirectory, required)), `${required} is missing`);
   for (const script of files(extensionDirectory).filter((path) => path.endsWith(".js"))) new vm.Script(readFileSync(script, "utf8"), { filename: relative(root, script) });
   const source = readFileSync(join(extensionDirectory, "sidepanel.js"), "utf8");
   for (const prohibited of ["chrome.cookies", "chrome.scripting", "executeScript", "chrome.webRequest", "document.cookie"]) assert(!source.includes(prohibited), `prohibited API reference found: ${prohibited}`);
   assert(source.includes("captureVisibleTab") && source.includes("window.confirm"), "visible screenshot confirmation flow is missing");
-  assert(source.includes("chrome.storage.session"), "temporary extracted-text session storage is missing");
+  assert(source.includes("chrome.tabCapture.capture") && source.includes("captureVisibleTab"), "tab stream and compatible screenshot scan modes are required");
+  const scanUtilsSource = readFileSync(join(extensionDirectory, "scan-utils.js"), "utf8");
+  const scanContext: { HuntingScanUtils?: { fingerprintDifference: (left: number[], right: number[]) => number; selectKeyframes: <T>(frames: T[], maximum: number) => T[] } } = {};
+  vm.runInNewContext(scanUtilsSource, scanContext, { filename: "extension/scan-utils.js" });
+  const scanUtils = scanContext.HuntingScanUtils;
+  assert(scanUtils && source.includes("selectKeyframes") && source.includes("MAX_UPLOAD_FRAMES = 10"), "keyframe selection and upload limit are missing");
+  const sampleFrames = Array.from({ length: 25 }, (_, index) => index);
+  const selectedFrames = scanUtils.selectKeyframes(sampleFrames, 10);
+  assert(selectedFrames.length === 10 && selectedFrames[0] === 0 && selectedFrames.at(-1) === 24, "keyframe selection must preserve the first and last frames");
+  assert(scanUtils.fingerprintDifference([10, 20], [10, 20]) === 0 && scanUtils.fingerprintDifference([10, 20], [20, 40]) === 15, "fingerprint difference is invalid");
+  assert(source.includes("SCAN_MAX_DURATION_MS = 60_000"), "scan duration limit is missing");
+  assert(!source.includes("MediaRecorder"), "resume scans must not create video files");
   for (const removed of ["resume-file", "uploadResume", "/api/plugin/resumes"]) assert(!source.includes(removed), `removed resume import flow is still present: ${removed}`);
+  for (const removed of ["capture-screen", "undo-capture", "finalize-capture"]) assert(!source.includes(removed), `manual multi-screen control is still present: ${removed}`);
   assert(source.includes("/api/plugin/resume-capture/segment") && source.includes("/api/plugin/resume-capture/finalize"), "multi-screen resume capture flow is incomplete");
   assert(source.includes("localhost:3010") && source.includes("localhost:3000"), "backend auto-discovery ports are missing");
   assert(source.includes("result.data.version === chrome.runtime.getManifest().version"), "backend compatibility check is missing");
