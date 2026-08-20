@@ -104,7 +104,7 @@ kbd { padding: 2px 5px; border: 1px solid var(--line-strong); border-bottom-widt
 .button.danger { color: var(--red); }
 .button.small { min-height: 32px; padding: 0 10px; font-size: 12px; }
 .button:disabled { cursor: not-allowed; opacity: .48; }
-.button .spin { animation: spin 1s linear infinite; }
+.spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }
@@ -223,6 +223,31 @@ kbd { padding: 2px 5px; border: 1px solid var(--line-strong); border-bottom-widt
 .detail-actions { margin-top: 12px; display: flex; gap: 7px; flex-wrap: wrap; }
 .modal-head > div p { margin: 4px 0 0; color: var(--subtle); font-size: 10px; }
 .resume-import-form { margin: 0; }
+.resume-inputs { min-width: 0; margin: 0; padding: 0; border: 0; }
+.resume-inputs:disabled { opacity: .72; }
+.selected-file { min-height: 44px; margin-top: 8px; padding: 8px 10px; display: flex; align-items: center; gap: 9px; border: 1px solid #bdd2cb; border-radius: 5px; background: var(--green-soft); color: var(--green); }
+.selected-file > svg { flex: 0 0 auto; }
+.selected-file span,.selected-file strong,.selected-file small { min-width: 0; display: block; }
+.selected-file strong { overflow: hidden; color: var(--ink); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.selected-file small { margin-top: 3px; color: var(--green); font-size: 9px; }
+.import-progress { margin-top: 18px; padding: 14px 15px; border: 1px solid #cddbd6; border-radius: 6px; background: #f8fbfa; }
+.import-progress-head { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: start; gap: 10px; }
+.import-progress-icon { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 5px; background: var(--green-soft); color: var(--green); }
+.import-progress-head strong { display: block; font-size: 12px; }
+.import-progress-head p { margin: 4px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.import-progress-head time { padding-top: 2px; color: var(--subtle); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; font-variant-numeric: tabular-nums; }
+.import-progress-track { height: 6px; margin-top: 13px; overflow: hidden; border-radius: 3px; background: #e2e9e6; }
+.import-progress-track span { height: 100%; display: block; border-radius: inherit; background: var(--green); transition: width .3s ease; }
+.import-progress-steps { margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; list-style: none; }
+.import-progress-steps li { min-width: 0; display: flex; align-items: center; gap: 6px; color: var(--subtle); font-size: 9px; }
+.import-progress-steps li > svg { flex: 0 0 auto; }
+.import-progress-steps li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-progress-steps li.done,.import-progress-steps li.active { color: var(--green); font-weight: 650; }
+.import-progress.status-success { border-color: #b8d2c9; background: var(--green-soft); }
+.import-progress.status-error { border-color: #e6c5c1; background: var(--red-soft); }
+.import-progress.status-error .import-progress-icon { background: white; color: var(--red); }
+.import-progress.status-error .import-progress-track span { background: var(--red); }
+.import-progress.status-error .import-progress-steps li.failed { color: var(--red); }
 
 .campaign-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .campaign-card { min-height: 220px; padding: 18px; display: flex; flex-direction: column; border: 1px solid var(--line); background: white; box-shadow: var(--shadow); }
@@ -352,6 +377,7 @@ kbd { padding: 2px 5px; border: 1px solid var(--line-strong); border-bottom-widt
 
 @media (max-width: 420px) {
   .metrics-grid { grid-template-columns: 1fr; }.metric { border-right: 0; border-bottom: 1px solid var(--line); }.metric:nth-child(3) { border-bottom: 1px solid var(--line); }.metric:last-child { border-bottom: 0; }.entity-card { padding: 14px; }.campaign-card { min-height: 200px; }.page-actions { display: grid; grid-template-columns: 1fr; }.button { white-space: normal; }
+  .import-progress { padding: 12px; }.import-progress-head { grid-template-columns: 28px minmax(0, 1fr); }.import-progress-icon { width: 28px; height: 28px; }.import-progress-head time { grid-column: 2; padding: 0; }.import-progress-steps { grid-template-columns: 1fr; gap: 7px; }.import-progress-steps li span { white-space: normal; }
 }
 
 @media (max-width: 760px) {
