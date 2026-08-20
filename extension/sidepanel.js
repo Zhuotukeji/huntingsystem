@@ -1,10 +1,14 @@
 const DEFAULT_BACKENDS = ["http://localhost:3010", "http://localhost:3000"];
 const OPEN_STATUSES = "NEW,CLAIMED,IN_PROGRESS,DEFERRED";
-const state = { backend: DEFAULT_BACKENDS[0], token: "", email: "", health: null, tasks: [], campaigns: [], activeTask: null, candidates: [], feedbackTaskId: "", importMode: "file" };
+const CAPTURE_SESSION_KEY = "resumeCaptureDraftV1";
+const emptyCapture = () => ({ campaignId: "", pageUrl: "", segments: [] });
+const state = { backend: DEFAULT_BACKENDS[0], token: "", email: "", health: null, tasks: [], campaigns: [], activeTask: null, candidates: [], feedbackTaskId: "", capture: emptyCapture() };
 const byId = (id) => document.getElementById(id);
 
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]); }
 function normalizeBackend(value) { return String(value || "").trim().replace(/\/$/, ""); }
+function normalizedPageUrl(value) { const url = new URL(value); url.hash = ""; return url.toString().replace(/\/$/, ""); }
+function normalizedCandidateName(value) { return String(value || "").normalize("NFKC").toLowerCase().replace(/^(姓名|候选人)/, "").replace(/[\s·•,，。:：()（）_-]/g, ""); }
 function showToast(value, type = "success") { const toast = byId("toast"); toast.textContent = value; toast.className = type === "error" ? "error" : ""; toast.style.display = "block"; window.clearTimeout(showToast.timer); showToast.timer = window.setTimeout(() => { toast.style.display = "none"; }, 4200); }
 function setButtonLoading(button, loading, label) { if (!button.dataset.defaultLabel) button.dataset.defaultLabel = button.textContent; button.disabled = loading; button.textContent = loading ? label : button.dataset.defaultLabel; }
 function setConnection(status, label) { const badge = byId("connection-badge"); badge.className = `connection ${status}`; badge.querySelector("span").textContent = label; }
@@ -16,7 +20,7 @@ async function fetchWithTimeout(url, options = {}, timeout = 2500) {
 
 async function probeBackend(candidate) {
   const backend = normalizeBackend(candidate); if (!backend) return null;
-  try { const response = await fetchWithTimeout(`${backend}/api/plugin/health`, { cache: "no-store" }); const result = await response.json(); return response.ok && result.data?.ready ? { backend, health: result.data } : null; } catch { return null; }
+  try { const response = await fetchWithTimeout(`${backend}/api/plugin/health`, { cache: "no-store" }); const result = await response.json(); return response.ok && result.data?.ready && result.data.version === chrome.runtime.getManifest().version ? { backend, health: result.data } : null; } catch { return null; }
 }
 
 async function discoverBackend(preferred) {
@@ -32,7 +36,7 @@ async function discoverBackend(preferred) {
 
 async function api(path, options = {}) {
   const headers = { Authorization: `Bearer ${state.token}`, ...(options.headers || {}) };
-  if (options.body && !(options.body instanceof FormData) && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+  if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
   let response; try { response = await fetch(`${state.backend}${path}`, { ...options, headers }); } catch { throw new Error("后台无法连接，请在设置中重新检测"); }
   const result = await response.json().catch(() => ({}));
   if (response.status === 401) { await signOut(false); throw new Error(result.error || "插件登录已失效，请重新登录"); }
@@ -51,18 +55,21 @@ async function login() {
   } catch (error) { showToast(error.message, "error"); } finally { setButtonLoading(button, false); }
 }
 
-async function signOut(notify = true) { state.token = ""; state.tasks = []; await chrome.storage.local.remove("token"); showWorkspace(false); if (notify) showToast("已退出内部登录"); }
-async function loadWorkspace() { await Promise.all([loadTasks(), loadCampaigns()]); renderHealth(); }
+async function signOut(notify = true) { state.token = ""; state.tasks = []; state.capture = emptyCapture(); await Promise.all([chrome.storage.local.remove("token"), chrome.storage.session.remove(CAPTURE_SESSION_KEY)]); showWorkspace(false); if (notify) showToast("已退出内部登录"); }
+async function loadWorkspace() { await Promise.all([loadTasks(), loadCampaigns()]); await restoreCapture(); renderHealth(); }
 
 async function loadCampaigns() {
-  try { state.campaigns = await api("/api/plugin/campaigns"); byId("campaign").innerHTML = state.campaigns.map((campaign) => `<option value="${escapeHtml(campaign.id)}">${escapeHtml(campaign.name)} · ${escapeHtml(campaign.roleName)}</option>`).join(""); } catch (error) { showToast(error.message, "error"); }
+  try {
+    state.campaigns = await api("/api/plugin/campaigns");
+    byId("capture-campaign").innerHTML = state.campaigns.map((campaign) => `<option value="${escapeHtml(campaign.id)}">${escapeHtml(campaign.name)} · ${escapeHtml(campaign.roleName)}</option>`).join("");
+  } catch (error) { showToast(error.message, "error"); }
 }
 
 const statusLabels = { NEW: "新任务", CLAIMED: "已领取", IN_PROGRESS: "执行中", DEFERRED: "已延期" };
 function searchPhrase(task) { return [task.companyName, ...(task.query?.keywords || []).slice(0, 2), ...(task.query?.locations || []).slice(0, 1)].filter(Boolean).join(" "); }
 function renderTasks() {
   byId("task-count").textContent = `共 ${state.tasks.length} 个开放任务`;
-  if (!state.tasks.length) { byId("tasks").innerHTML = '<div class="empty-state"><strong>暂无开放任务</strong><p>导入授权简历并等待增量学习生成下一轮搜索任务。</p></div>'; return; }
+  if (!state.tasks.length) { byId("tasks").innerHTML = '<div class="empty-state"><strong>暂无开放任务</strong><p>采集 BOSS 简历并等待增量学习生成下一轮搜索任务。</p></div>'; return; }
   byId("tasks").innerHTML = state.tasks.map((task) => {
     const tags = [...(task.query?.keywords || []), ...(task.query?.locations || [])].slice(0, 6).map((item) => `<span class="tag">${escapeHtml(item)}</span>`).join("");
     const initial = task.status === "NEW" || task.status === "DEFERRED";
@@ -79,10 +86,18 @@ async function claimTask(task) { await transitionTask(task, "CLAIMED"); showToas
 async function copyTask(task) { await ensureStarted(task); await navigator.clipboard.writeText(searchPhrase(task)); showToast("搜索词已复制"); }
 async function openBoss(task) { await ensureStarted(task); await chrome.tabs.create({ url: "https://www.zhipin.com/web/geek/job" }); }
 
+function currentScreenshotTab() {
+  return chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+    if (!tab?.url) throw new Error("无法读取当前标签页地址");
+    const synthetic = tab.url === chrome.runtime.getURL("synthetic.html"); let hostname = ""; try { hostname = new URL(tab.url).hostname; } catch {}
+    const boss = tab.url.startsWith("https:") && (hostname === "zhipin.com" || hostname.endsWith(".zhipin.com"));
+    if (!boss && !synthetic) throw new Error("请切换到当前可见的 BOSS 页面或合成验收页");
+    return { tab, synthetic, boss };
+  });
+}
+
 async function analyze(task) {
-  await ensureStarted(task); const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }); if (!tab?.url) throw new Error("无法读取当前标签页地址");
-  const syntheticUrl = chrome.runtime.getURL("synthetic.html"); const synthetic = tab.url === syntheticUrl; let hostname = ""; try { hostname = new URL(tab.url).hostname; } catch {}
-  const isBoss = tab.url.startsWith("https:") && (hostname === "zhipin.com" || hostname.endsWith(".zhipin.com")); if (!isBoss && !synthetic) throw new Error("请切换到当前可见的 BOSS 页面或合成验收页");
+  await ensureStarted(task); const { tab, synthetic } = await currentScreenshotTab();
   const purpose = synthetic ? "合成页面将发送至 Sub2API 验证识别链路。" : "当前可见 BOSS 页面截图将发送至已配置的 Sub2API，用于本任务候选人匹配判断。";
   if (!window.confirm(`${purpose}\n\n截图不会由后台落盘，是否继续？`)) return;
   const imageDataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg", quality: 82 });
@@ -109,15 +124,80 @@ async function submitFeedback(event) {
   try { await api(`/api/plugin/tasks/${state.feedbackTaskId}/feedback`, { method: "POST", body: JSON.stringify({ resultCount, qualifiedCount, effectiveConversations, note: byId("feedback-note").value }) }); byId("feedback-dialog").close(); showToast("反馈已记录，学习权重已更新"); await loadTasks(); } catch (error) { showToast(error.message, "error"); } finally { setButtonLoading(button, false); }
 }
 
-function setImportMode(mode) { state.importMode = mode; document.querySelectorAll("[data-import-mode]").forEach((button) => button.classList.toggle("active", button.dataset.importMode === mode)); byId("file-input-wrap").hidden = mode !== "file"; byId("text-input-wrap").hidden = mode !== "text"; }
-async function uploadResume() {
-  const button = byId("upload-resume"); if (!byId("campaign").value) return showToast("暂无可用人才画像", "error"); if (!byId("authorization-confirmed").checked || !byId("legal-basis").value.trim()) return showToast("请填写并确认来源及处理依据", "error"); setButtonLoading(button, true, "正在导入…");
+async function dataUrlHash(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function persistCapture() { await chrome.storage.session.set({ [CAPTURE_SESSION_KEY]: state.capture }); }
+async function restoreCapture() {
+  const saved = await chrome.storage.session.get(CAPTURE_SESSION_KEY);
+  const draft = saved[CAPTURE_SESSION_KEY];
+  state.capture = draft && Array.isArray(draft.segments) ? draft : emptyCapture();
+  if (state.capture.campaignId && state.campaigns.some((item) => item.id === state.capture.campaignId)) byId("capture-campaign").value = state.capture.campaignId;
+  renderCapture();
+}
+
+function renderCapture() {
+  const segments = state.capture.segments;
+  const last = segments.at(-1);
+  byId("capture-counter").textContent = `${segments.length} / 10`;
+  byId("capture-candidate").textContent = segments.map((segment) => segment.candidateName).find(Boolean) || "尚未识别";
+  byId("capture-section").textContent = last?.visibleSection || (segments.length ? `第 ${segments.length} 屏` : "等待第一屏");
+  byId("capture-campaign").disabled = segments.length > 0;
+  byId("undo-capture").disabled = segments.length === 0;
+  byId("clear-capture").disabled = segments.length === 0;
+  byId("finalize-capture").disabled = segments.length === 0;
+  byId("capture-screen").disabled = segments.length >= 10;
+  const guide = byId("capture-guide");
+  guide.querySelector("strong").textContent = segments.length ? (last?.hasMoreBelow ? "继续向下滚动" : "已接近简历底部") : "从简历顶部开始";
+  guide.querySelector("span").textContent = segments.length ? (last?.hasMoreBelow ? "保留上一屏底部约 15% 的内容，再截取下一屏。" : "确认没有遗漏后，可完成入库；也可继续补充一屏。") : "截取当前屏后，向下滚动约 80%，保留一小段重叠再继续。";
+  byId("capture-segments").innerHTML = segments.length ? segments.map((segment) => { const warnings = Array.isArray(segment.warnings) ? segment.warnings : []; return `<article class="capture-segment"><span>${String(segment.sequence).padStart(2, "0")}</span><div><strong>${escapeHtml(segment.visibleSection || `第 ${segment.sequence} 屏`)}</strong><p>${escapeHtml(segment.text.split("\n").filter(Boolean).slice(0, 2).join(" · "))}</p></div><small class="${warnings.length ? "capture-warning" : ""}" title="${escapeHtml(warnings.join("；"))}">${warnings.length ? "需复核" : `${segment.text.length} 字`}</small></article>`; }).join("") : '<div class="empty-state compact"><strong>还没有截图</strong><p>打开一位候选人的 BOSS 简历详情页并回到顶部。</p></div>';
+}
+
+function validateCaptureBasis() {
+  const campaignId = byId("capture-campaign").value;
+  const legalBasis = byId("capture-legal-basis").value.trim();
+  if (!campaignId) throw new Error("暂无可用人才画像");
+  if (!legalBasis || !byId("capture-authorization").checked) throw new Error("请填写并确认当前招聘处理依据");
+  return { campaignId, legalBasis };
+}
+
+async function captureResumeScreen() {
+  const button = byId("capture-screen");
   try {
-    let options;
-    if (state.importMode === "file") { const file = byId("resume-file").files[0]; if (!file) throw new Error("请选择 PDF、DOCX 或 TXT 简历"); if (file.size > 10 * 1024 * 1024) throw new Error("简历文件不能超过 10MB"); const form = new FormData(); form.set("file", file); form.set("campaignId", byId("campaign").value); form.set("sourceType", byId("source-type").value); form.set("legalBasis", byId("legal-basis").value.trim()); form.set("authorizationConfirmed", "true"); options = { method: "POST", body: form }; }
-    else { const rawText = byId("resume-text").value.trim(); if (rawText.length < 20) throw new Error("粘贴的简历正文至少需要 20 个字符"); options = { method: "POST", body: JSON.stringify({ campaignId: byId("campaign").value, sourceType: byId("source-type").value, legalBasis: byId("legal-basis").value.trim(), authorizationConfirmed: true, rawText, fileName: "插件粘贴简历.txt" }) }; }
-    const result = await api("/api/plugin/resumes", options); const detail = result.duplicate ? "该画像下已存在相同简历，未重复入队。" : `已创建增量学习任务 ${result.aiRun.id.slice(0, 8)}。`; byId("import-result").textContent = `${result.resume.fileName} 导入完成。${detail}`; byId("import-result").hidden = false; if (!result.duplicate) { byId("resume-file").value = ""; byId("resume-text").value = ""; }
-  } catch (error) { showToast(error.message, "error"); } finally { setButtonLoading(button, false); }
+    const basis = validateCaptureBasis();
+    if (state.capture.segments.length >= 10) throw new Error("一份简历最多采集 10 屏");
+    const { tab, synthetic, boss } = await currentScreenshotTab();
+    const pageUrl = normalizedPageUrl(tab.url);
+    if (state.capture.pageUrl && normalizedPageUrl(state.capture.pageUrl) !== pageUrl) throw new Error("请回到本次采集的同一个候选人详情页");
+    if (state.capture.campaignId && state.capture.campaignId !== basis.campaignId) throw new Error("本次采集的人才画像不能中途更换");
+    if (boss && !window.confirm("当前可见 BOSS 简历截图将发送至已配置的 Sub2API，仅用于提取本岗位所需的履历文本。截图不会落盘，是否继续？")) return;
+    setButtonLoading(button, true, "正在识别…");
+    const imageDataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg", quality: 84 });
+    const clientHash = await dataUrlHash(imageDataUrl);
+    if (state.capture.segments.some((segment) => segment.screenshotHash === clientHash)) throw new Error("这一屏已经采集过，请向下滚动后重试");
+    const segment = await api("/api/plugin/resume-capture/segment", { method: "POST", body: JSON.stringify({ campaignId: basis.campaignId, authorizationConfirmed: true, pageUrl: tab.url, synthetic, sequence: state.capture.segments.length + 1, imageDataUrl }) });
+    if (segment.screenshotHash !== clientHash) throw new Error("截图校验失败，请重试");
+    const knownName = state.capture.segments.map((item) => item.candidateName).find(Boolean);
+    if (knownName && segment.candidateName && normalizedCandidateName(knownName) !== normalizedCandidateName(segment.candidateName)) throw new Error(`当前屏识别为${segment.candidateName}，与本次候选人${knownName}不一致`);
+    state.capture = { campaignId: basis.campaignId, pageUrl: tab.url, segments: [...state.capture.segments, segment] };
+    await persistCapture(); renderCapture(); showToast(`第 ${segment.sequence} 屏已识别，截图未保存`);
+  } catch (error) { showToast(error.message, "error"); } finally { setButtonLoading(button, false); renderCapture(); }
+}
+
+async function undoCapture() { state.capture.segments.pop(); if (!state.capture.segments.length) state.capture = emptyCapture(); await persistCapture(); renderCapture(); byId("capture-result").hidden = true; showToast("已撤销上一屏"); }
+async function clearCapture() { if (!window.confirm("确定清空本次已识别的简历文本吗？")) return; state.capture = emptyCapture(); await chrome.storage.session.remove(CAPTURE_SESSION_KEY); renderCapture(); byId("capture-result").hidden = true; showToast("本次采集已清空"); }
+async function finalizeCapture() {
+  const button = byId("finalize-capture");
+  try {
+    const basis = validateCaptureBasis(); if (!state.capture.segments.length) throw new Error("请先采集至少一屏简历");
+    setButtonLoading(button, true, "正在合并入库…");
+    const result = await api("/api/plugin/resume-capture/finalize", { method: "POST", body: JSON.stringify({ ...basis, authorizationConfirmed: true, segments: state.capture.segments }) });
+    const detail = result.duplicate ? "简历库中已有相同内容，未重复创建。" : `已加入增量学习队列 ${result.aiRun.id.slice(0, 8)}。`;
+    byId("capture-result").textContent = `${result.resume.fileName} 已永久入库，共合并 ${result.merged.screenCount} 屏。${detail}`; byId("capture-result").hidden = false;
+    state.capture = emptyCapture(); await chrome.storage.session.remove(CAPTURE_SESSION_KEY); renderCapture(); showToast("简历已完成入库");
+  } catch (error) { showToast(error.message, "error"); } finally { setButtonLoading(button, false); renderCapture(); }
 }
 
 function renderHealth() { byId("extension-version").textContent = `版本 v${chrome.runtime.getManifest().version}`; byId("settings-backend-status").textContent = state.health ? `${state.backend} · 正常` : "未连接"; byId("settings-ai-status").textContent = state.health?.ai.enabled && state.health?.ai.hasApiKey ? `${state.health.ai.model} · 已启用` : "未配置或未启用"; byId("settings-screen-status").textContent = state.health?.ai.screenAnalysisEnabled ? "已启用" : "未启用"; }
@@ -125,9 +205,9 @@ function switchView(view) { document.querySelectorAll(".tab").forEach((tab) => t
 async function saveBackend() { if (!await discoverBackend(byId("manual-backend").value)) return showToast("该地址没有可用的觅才后台", "error"); byId("backend").value = state.backend; showToast("后台地址已保存"); }
 async function restore() { const saved = await chrome.storage.local.get(["backend", "token", "email"]); state.token = saved.token || ""; state.email = saved.email || ""; byId("email").value = state.email; const connected = await discoverBackend(saved.backend || DEFAULT_BACKENDS[0]); if (!state.token || !connected) return showWorkspace(false); showWorkspace(true); await loadWorkspace(); }
 
-byId("probe").addEventListener("click", () => discoverBackend(byId("backend").value)); byId("login").addEventListener("click", login); byId("logout").addEventListener("click", () => signOut()); byId("refresh").addEventListener("click", loadTasks); byId("close-analysis").addEventListener("click", () => { byId("analysis").hidden = true; }); byId("save-backend").addEventListener("click", saveBackend); byId("open-synthetic").addEventListener("click", () => chrome.tabs.create({ url: chrome.runtime.getURL("synthetic.html") })); byId("upload-resume").addEventListener("click", uploadResume); byId("feedback-form").addEventListener("submit", submitFeedback);
+byId("probe").addEventListener("click", () => discoverBackend(byId("backend").value)); byId("login").addEventListener("click", login); byId("logout").addEventListener("click", () => signOut()); byId("refresh").addEventListener("click", loadTasks); byId("close-analysis").addEventListener("click", () => { byId("analysis").hidden = true; }); byId("save-backend").addEventListener("click", saveBackend); byId("open-synthetic").addEventListener("click", () => chrome.tabs.create({ url: chrome.runtime.getURL("synthetic.html") })); byId("capture-screen").addEventListener("click", captureResumeScreen); byId("undo-capture").addEventListener("click", undoCapture); byId("clear-capture").addEventListener("click", clearCapture); byId("finalize-capture").addEventListener("click", finalizeCapture); byId("feedback-form").addEventListener("submit", submitFeedback);
 document.querySelectorAll("[data-close-feedback]").forEach((button) => button.addEventListener("click", () => byId("feedback-dialog").close()));
-document.querySelector(".tabs").addEventListener("click", (event) => { const tab = event.target.closest("[data-view]"); if (tab) switchView(tab.dataset.view); }); document.querySelector(".segmented").addEventListener("click", (event) => { const button = event.target.closest("[data-import-mode]"); if (button) setImportMode(button.dataset.importMode); });
+document.querySelector(".tabs").addEventListener("click", (event) => { const tab = event.target.closest("[data-view]"); if (tab) switchView(tab.dataset.view); });
 byId("tasks").addEventListener("click", async (event) => { const button = event.target.closest("button[data-action]"); if (!button) return; const task = taskById(button.dataset.id); if (!task) return; button.disabled = true; try { if (button.dataset.action === "claim") await claimTask(task); if (button.dataset.action === "copy") await copyTask(task); if (button.dataset.action === "open") await openBoss(task); if (button.dataset.action === "analyze") await analyze(task); if (button.dataset.action === "feedback") openFeedback(task); if (button.dataset.action === "defer") { await transitionTask(task, "DEFERRED"); showToast("任务已延期"); } } catch (error) { showToast(error.message, "error"); } finally { button.disabled = false; } });
 byId("analysis-content").addEventListener("click", async (event) => { const button = event.target.closest("button[data-action]"); if (!button) return; try { if (button.dataset.action === "greeting") await generateGreeting(Number(button.dataset.index), button); if (button.dataset.action === "copy-draft") { await navigator.clipboard.writeText(byId(`draft-${button.dataset.index}`).dataset.value); showToast("草稿已复制，请人工审核后发送"); } } catch (error) { showToast(error.message, "error"); } });
 

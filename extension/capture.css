@@ -1,0 +1,72 @@
+.capture-counter {
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.capture-guide {
+  margin-top: 13px;
+  padding: 11px;
+  border-left: 3px solid var(--green);
+  background: var(--green-soft);
+}
+
+.capture-guide strong,
+.capture-guide span { display: block; }
+.capture-guide strong { font-size: 11px; }
+.capture-guide span { margin-top: 3px; color: #49645d; font-size: 9px; }
+
+.capture-progress {
+  margin-top: 13px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.capture-progress > div { min-width: 0; padding: 9px 10px; }
+.capture-progress > div + div { border-left: 1px solid var(--line); }
+.capture-progress span,
+.capture-progress strong { display: block; }
+.capture-progress span { color: var(--muted); font-size: 8px; }
+.capture-progress strong { margin-top: 2px; overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+
+.capture-segments { margin-top: 10px; }
+.capture-segment {
+  min-height: 54px;
+  padding: 8px 9px;
+  display: grid;
+  grid-template-columns: 27px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  background: #fff;
+}
+
+.capture-segment:last-child { border-bottom: 1px solid var(--line); }
+.capture-segment > span {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  background: var(--green-soft);
+  color: var(--green);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.capture-segment div { min-width: 0; }
+.capture-segment strong { display: block; font-size: 9px; }
+.capture-segment p { margin-top: 2px; overflow: hidden; color: var(--muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.capture-segment small { margin: 0; white-space: nowrap; }
+.capture-segment small.capture-warning { color: var(--amber); font-weight: 800; }
+.capture-actions { margin-top: 7px; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.capture-actions .button { font-size: 9px; }
+.empty-state.compact { padding: 18px 12px; }

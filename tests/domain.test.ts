@@ -15,6 +15,7 @@ let resumes: typeof import("../src/lib/resumes");
 let learning: typeof import("../src/lib/learning");
 let settings: typeof import("../src/lib/settings");
 let pluginAuth: typeof import("../src/lib/plugin-auth");
+let resumeCapture: typeof import("../src/lib/resume-capture");
 let seed: typeof import("../src/lib/seed");
 
 function createTextPdf(text: string) {
@@ -46,6 +47,7 @@ before(async () => {
   learning = await import("../src/lib/learning");
   settings = await import("../src/lib/settings");
   pluginAuth = await import("../src/lib/plugin-auth");
+  resumeCapture = await import("../src/lib/resume-capture");
   seed = await import("../src/lib/seed");
 });
 
@@ -162,6 +164,38 @@ test("screenshot source only accepts BOSS or the bundled synthetic page", () => 
   assert.equal(pluginAuth.screenshotSource("chrome-extension://extension-id/synthetic.html", true), "SYNTHETIC");
   assert.throws(() => pluginAuth.screenshotSource("https://example.com/candidate"), /只允许分析/);
   assert.throws(() => pluginAuth.screenshotSource("chrome-extension://extension-id/synthetic.html", false), /只允许分析/);
+});
+
+test("multi-screen resume capture removes overlap and sensitive contact fields", () => {
+  const first = {
+    sequence: 1, screenshotHash: "a".repeat(64), pageUrl: "https://www.zhipin.com/web/geek/detail/123", synthetic: false,
+    candidateName: "张三", headline: "海外业务负责人", visibleSection: "基本信息与第一段经历", hasMoreBelow: true, warnings: [],
+    text: ["姓名：张三", "电话：13800138000", "邮箱：zhangsan@example.com", "男 | 32岁 | 已婚", "广州星河网络有限公司", "海外业务负责人", "2022.03 - 至今", "负责 Google 与 Meta 海外增长"].join("\n"),
+  };
+  const second = {
+    sequence: 2, screenshotHash: "b".repeat(64), pageUrl: first.pageUrl, synthetic: false,
+    candidateName: "张三", headline: "", visibleSection: "工作经历", hasMoreBelow: false, warnings: [],
+    text: ["海外业务负责人", "2022.03 - 至今", "负责 Google 与 Meta 海外增长", "深圳远航科技有限公司", "海外增长总监", "负责东南亚市场从 0 到 1"].join("\n"),
+  };
+  const merged = resumeCapture.mergeResumeCaptureSegments([second, first]);
+  assert.equal(merged.screenCount, 2);
+  assert.equal((merged.text.match(/2022\.03 - 至今/g) || []).length, 1);
+  assert.match(merged.text, /广州星河网络有限公司/);
+  assert.match(merged.text, /深圳远航科技有限公司/);
+  assert.doesNotMatch(merged.text, /13800138000|zhangsan@example\.com/);
+  assert.doesNotMatch(merged.text, /32岁|已婚/);
+});
+
+test("multi-screen resume capture rejects duplicate screens and mixed candidates", () => {
+  const segment = {
+    sequence: 1, screenshotHash: "c".repeat(64), pageUrl: "https://www.zhipin.com/web/geek/detail/456", synthetic: false,
+    candidateName: "李四", headline: "增长负责人", visibleSection: "工作经历", hasMoreBelow: true, warnings: [],
+    text: "姓名：李四\n增长负责人\n广州增长科技有限公司\n负责海外渠道与团队管理",
+  };
+  assert.throws(() => resumeCapture.mergeResumeCaptureSegments([segment, { ...segment, sequence: 2 }]), /重复截图/);
+  assert.throws(() => resumeCapture.mergeResumeCaptureSegments([segment, { ...segment, sequence: 2, screenshotHash: "d".repeat(64), candidateName: "王五", text: "姓名：王五\n深圳远航网络有限公司\n海外业务负责人" }]), /姓名不一致/);
+  assert.throws(() => resumeCapture.mergeResumeCaptureSegments([{ ...segment, sequence: 2 }]), /序号必须从 1 开始/);
+  assert.throws(() => resumeCapture.mergeResumeCaptureSegments([{ ...segment, candidateName: "" }]), /第一屏缺少候选人姓名/);
 });
 
 after(() => {

@@ -8,6 +8,7 @@ import type { Campaign, ResumeProfile } from "@/lib/types";
 
 const statusLabels: Record<string, string> = { PENDING: "待学习", PROCESSING: "分析中", READY: "已入图谱", NEEDS_REVIEW: "需复核", FAILED: "失败" };
 const sourceLabels: Record<string, string> = {
+  BOSS_VISIBLE_SCREENSHOT: "BOSS 可见页截图",
   CANDIDATE_SHARED: "候选人提供", OFFICIAL_DOWNLOAD: "官方授权导出", BOSS_AUTHORIZED_DOWNLOAD: "BOSS 授权下载",
   AUTHORIZED_TEXT: "授权文本", INTERNAL_ARCHIVE: "内部合规存档", INTERNAL_AUTHORIZED: "内部授权资料",
 };

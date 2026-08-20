@@ -6,7 +6,7 @@ import vm from "node:vm";
 const root = process.cwd();
 const extensionDirectory = join(root, "extension");
 const artifactDirectory = join(root, "artifacts");
-const expectedVersion = "0.2.0";
+const expectedVersion = "0.3.0";
 const artifactName = `hunting-extension-v${expectedVersion}.zip`;
 
 function crc32(buffer: Buffer) {
@@ -50,12 +50,16 @@ function check() {
     assert(data.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex")), `icon${size}.png is not a PNG`);
     assert(data.readUInt32BE(16) === size && data.readUInt32BE(20) === size, `icon${size}.png dimensions are invalid`);
   }
-  for (const required of ["background.js", "sidepanel.html", "sidepanel.css", "sidepanel.js", "synthetic.html", "synthetic.css", "README.md"]) assert(existsSync(join(extensionDirectory, required)), `${required} is missing`);
+  for (const required of ["background.js", "sidepanel.html", "sidepanel.css", "capture.css", "sidepanel.js", "synthetic.html", "synthetic.css", "README.md"]) assert(existsSync(join(extensionDirectory, required)), `${required} is missing`);
   for (const script of files(extensionDirectory).filter((path) => path.endsWith(".js"))) new vm.Script(readFileSync(script, "utf8"), { filename: relative(root, script) });
   const source = readFileSync(join(extensionDirectory, "sidepanel.js"), "utf8");
   for (const prohibited of ["chrome.cookies", "chrome.scripting", "executeScript", "chrome.webRequest", "document.cookie"]) assert(!source.includes(prohibited), `prohibited API reference found: ${prohibited}`);
   assert(source.includes("captureVisibleTab") && source.includes("window.confirm"), "visible screenshot confirmation flow is missing");
+  assert(source.includes("chrome.storage.session"), "temporary extracted-text session storage is missing");
+  for (const removed of ["resume-file", "uploadResume", "/api/plugin/resumes"]) assert(!source.includes(removed), `removed resume import flow is still present: ${removed}`);
+  assert(source.includes("/api/plugin/resume-capture/segment") && source.includes("/api/plugin/resume-capture/finalize"), "multi-screen resume capture flow is incomplete");
   assert(source.includes("localhost:3010") && source.includes("localhost:3000"), "backend auto-discovery ports are missing");
+  assert(source.includes("result.data.version === chrome.runtime.getManifest().version"), "backend compatibility check is missing");
   console.log(`Extension check passed: MV3 v${expectedVersion}, ${files(extensionDirectory).length} files`);
 }
 

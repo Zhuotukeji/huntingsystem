@@ -66,8 +66,19 @@ export const screenshotAnalysisSchema = z.object({
   note: z.string().max(300),
 });
 
+export const resumeCaptureSegmentSchema = z.object({
+  isResumeDetail: z.boolean(),
+  candidateName: z.string().max(80),
+  headline: z.string().max(180),
+  visibleSection: z.string().max(100),
+  text: z.string().max(20_000),
+  hasMoreBelow: z.boolean(),
+  warnings: z.array(z.string().max(160)).max(8),
+});
+
 export type ResumeAnalysis = z.infer<typeof resumeAnalysisSchema>;
 export type ScreenshotAnalysis = z.infer<typeof screenshotAnalysisSchema>;
+export type ResumeCaptureSegmentAnalysis = z.infer<typeof resumeCaptureSegmentSchema>;
 
 function createClient() {
   const config = getAiRuntimeConfig();
@@ -176,6 +187,46 @@ export async function analyzeScreenshotWithAi(campaign: Campaign, imageDataUrl: 
   const content = response.choices[0]?.message?.content;
   if (!content) throw new Error("模型未返回截图分析结果");
   return screenshotAnalysisSchema.parse(jsonFromText(content));
+}
+
+export async function extractResumeScreenshotSegmentWithAi(imageDataUrl: string) {
+  const runtime = createClient();
+  if (!runtime) throw new Error("Sub2API 尚未启用或配置不完整");
+  if (!runtime.config.screenAnalysisEnabled) throw new Error("管理员尚未启用截图分析");
+  const system = [
+    "你是招聘简历截图转录器。输入是同一位候选人简历详情页的一张当前可见视口截图。",
+    "只按阅读顺序逐行转录截图中明确可见的招聘履历事实，尽量一项事实一行；不要推断、补全、总结或评价。",
+    "保留姓名（仅在画面明确出现时）、职位、公司、任职日期、项目、业绩、技能和教育经历。",
+    "不得返回电话、邮箱、微信、身份证号、年龄、性别、婚育、照片描述等非必要个人信息。",
+    "如果不是单个候选人的简历详情页，将 isResumeDetail 设为 false。hasMoreBelow 只根据截图底部是否明显还有未展示内容判断。",
+    "输出符合指定结构的 JSON。",
+  ].join("\n");
+  if (runtime.config.apiStyle === "responses") {
+    const response = await runtime.client.responses.parse({
+      model: runtime.config.model,
+      input: [{
+        role: "user",
+        content: [
+          { type: "input_text", text: system },
+          { type: "input_image", image_url: imageDataUrl, detail: "high" },
+        ],
+      }],
+      text: { format: zodTextFormat(resumeCaptureSegmentSchema, "resume_capture_segment") },
+    });
+    if (!response.output_parsed) throw new Error("模型未返回简历截图识别结果");
+    return response.output_parsed;
+  }
+  const response = await runtime.client.chat.completions.create({
+    model: runtime.config.model,
+    messages: [{ role: "system", content: system }, {
+      role: "user",
+      content: [{ type: "text", text: "请转录当前可见的简历内容。" }, { type: "image_url", image_url: { url: imageDataUrl, detail: "high" } }],
+    }],
+    response_format: { type: "json_object" },
+  });
+  const content = response.choices[0]?.message?.content;
+  if (!content) throw new Error("模型未返回简历截图识别结果");
+  return resumeCaptureSegmentSchema.parse(jsonFromText(content));
 }
 
 export async function generateResearchSteps(campaign: Campaign, fallback: string[]) {

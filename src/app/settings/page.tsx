@@ -10,7 +10,7 @@ export default function SettingsPage() {
   const ai = getPublicAiSettings();
   const extension = getExtensionDeliveryStatus();
   const sources = [
-    { icon: BriefcaseBusiness, name: "BOSS 直聘", status: "waiting-human", label: "人工操作", detail: "Chrome 插件提供搜索词、显式截图判断和结果回填。系统不持有 BOSS 账号、Cookie，不自动浏览或发送消息。" },
+    { icon: BriefcaseBusiness, name: "BOSS 直聘", status: "waiting-human", label: "人工操作", detail: "Chrome 插件提供搜索词、显式截图判断、多屏简历采集和结果回填。系统不持有 BOSS 账号、Cookie，不自动浏览或发送消息。" },
     { icon: Database, name: "授权简历库", status: "active", label: "核心事实源", detail: "AI 只从已记录来源和处理依据的候选人简历中学习公司、任职、技能和搜索线索。" },
     { icon: Bot, name: "Sub2API", status: ai.enabled ? "active" : "draft", label: ai.enabled ? "已启用" : "未启用", detail: ai.enabled ? `当前模型 ${ai.model}，接口格式 ${ai.apiStyle}。` : "配置 Base URL、gpt-5.6 与 API Key 后启用真实 AI 分析。" },
   ];
