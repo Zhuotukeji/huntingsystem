@@ -1,6 +1,45 @@
 import { db, now } from "@/lib/db";
 
 const campaignId = "campaign-overseas-gm";
+const legacyPersonIds = ["person-lin", "person-zhou", "person-tang", "person-xu", "person-he", "person-qiao", "person-song", "person-luo"];
+const legacyOrganizationIds = ["org-northstar", "org-tide", "org-lantern", "org-reef", "org-arc", "org-canopy"];
+const legacyOrganizationNames = ["北辰互动", "潮汐科技", "远灯网络", "礁石数据", "弧光游戏", "穹顶工作室"];
+
+function placeholders(values: string[]) {
+  return values.map(() => "?").join(",");
+}
+
+export function removeLegacyDiscoverySamples() {
+  const entityIds = [...legacyPersonIds, ...legacyOrganizationIds];
+  const sampleExists = db.prepare(`
+    SELECT 1 FROM people WHERE id IN (${placeholders(legacyPersonIds)})
+    UNION ALL SELECT 1 FROM organizations WHERE id IN (${placeholders(legacyOrganizationIds)})
+    UNION ALL SELECT 1 FROM evidence WHERE entity_id IN (${placeholders(entityIds)})
+    UNION ALL SELECT 1 FROM tasks WHERE model_name = 'demo-agent-v1'
+    LIMIT 1
+  `).get(...legacyPersonIds, ...legacyOrganizationIds, ...entityIds);
+  if (!sampleExists) return;
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare(`DELETE FROM feedback WHERE entity_id IN (${placeholders(entityIds)})`).run(...entityIds);
+    db.prepare(`DELETE FROM evidence WHERE entity_id IN (${placeholders(entityIds)})`).run(...entityIds);
+    db.prepare(`DELETE FROM graph_edges WHERE from_id IN (${placeholders(entityIds)}) OR to_id IN (${placeholders(entityIds)})`).run(...entityIds, ...entityIds);
+    db.prepare(`DELETE FROM campaign_people WHERE person_id IN (${placeholders(legacyPersonIds)}) OR organization_id IN (${placeholders(legacyOrganizationIds)})`).run(...legacyPersonIds, ...legacyOrganizationIds);
+    db.prepare(`DELETE FROM person_skills WHERE person_id IN (${placeholders(legacyPersonIds)})`).run(...legacyPersonIds);
+    db.prepare(`DELETE FROM employments WHERE person_id IN (${placeholders(legacyPersonIds)}) OR organization_id IN (${placeholders(legacyOrganizationIds)})`).run(...legacyPersonIds, ...legacyOrganizationIds);
+    db.prepare(`DELETE FROM organization_facts WHERE organization_id IN (${placeholders(legacyOrganizationIds)})`).run(...legacyOrganizationIds);
+    db.prepare(`DELETE FROM campaign_organizations WHERE organization_id IN (${placeholders(legacyOrganizationIds)})`).run(...legacyOrganizationIds);
+    db.prepare(`DELETE FROM search_tasks WHERE company_name IN (${placeholders(legacyOrganizationNames)})`).run(...legacyOrganizationNames);
+    db.prepare("DELETE FROM tasks WHERE model_name = 'demo-agent-v1'").run();
+    db.prepare(`DELETE FROM learning_weights WHERE signal_type = 'COMPANY' AND signal_key IN (${placeholders(legacyOrganizationNames)})`).run(...legacyOrganizationNames);
+    db.prepare(`DELETE FROM people WHERE id IN (${placeholders(legacyPersonIds)})`).run(...legacyPersonIds);
+    db.prepare(`DELETE FROM organizations WHERE id IN (${placeholders(legacyOrganizationIds)})`).run(...legacyOrganizationIds);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
 
 function clearDatabase() {
   db.exec(`
@@ -67,4 +106,5 @@ export function seedDatabase(force = false) {
     .run(campaignId, JSON.stringify(["在简历库导入 PDF、DOCX、TXT 或结构化文本", "确认简历来源与处理依据", "在 AI 学习页面触发增量学习", "审核公司图谱并执行 BOSS 搜索任务"]), stamp);
 }
 
+removeLegacyDiscoverySamples();
 if (process.env.DEMO_MODE !== "false") seedDatabase();

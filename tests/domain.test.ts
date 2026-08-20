@@ -15,6 +15,7 @@ let resumes: typeof import("../src/lib/resumes");
 let learning: typeof import("../src/lib/learning");
 let settings: typeof import("../src/lib/settings");
 let pluginAuth: typeof import("../src/lib/plugin-auth");
+let seed: typeof import("../src/lib/seed");
 
 before(async () => {
   repository = await import("../src/lib/repository");
@@ -23,6 +24,7 @@ before(async () => {
   learning = await import("../src/lib/learning");
   settings = await import("../src/lib/settings");
   pluginAuth = await import("../src/lib/plugin-auth");
+  seed = await import("../src/lib/seed");
 });
 
 test("initial workspace has a profile but no invented companies or people", () => {
@@ -42,6 +44,19 @@ test("company discovery hides legacy companies without authorized resume evidenc
     .run("legacy-campaign-company", "campaign-overseas-gm", "legacy-company", timestamp);
   assert.equal(repository.listOrganizations().some((organization) => organization.organizationId === "legacy-company"), false);
   assert.equal(learning.getGraphData().nodes.some((node) => node.id === "legacy-company"), false);
+});
+
+test("legacy fixed demo people and companies are removed during migration", () => {
+  const timestamp = new Date().toISOString();
+  database.db.prepare("INSERT INTO organizations VALUES (?, ?, ?, '', '广州', '待确认', '', 0.5, ?)")
+    .run("org-northstar", "北辰互动", "北辰互动", timestamp);
+  database.db.prepare("INSERT INTO people VALUES (?, ?, ?, '', '广州', 0.5, ?)")
+    .run("person-lin", "林哲", "林哲", timestamp);
+  seed.removeLegacyDiscoverySamples();
+  const count = (table: "organizations" | "people", id: string) => Number((database.db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE id = ?`).get(id) as { count: number }).count);
+  assert.equal(count("organizations", "org-northstar"), 0);
+  assert.equal(count("people", "person-lin"), 0);
+  assert.equal(count("organizations", "legacy-company"), 1);
 });
 
 test("resume learning builds people, companies, graph and search tasks idempotently", async () => {

@@ -52,7 +52,7 @@ export function ResumeWorkbench({ campaigns }: { campaigns: Campaign[] }) {
       <div className="field"><label htmlFor="resume-source">来源类型</label><select id="resume-source" name="sourceType"><option value="CANDIDATE_SHARED">候选人主动提供</option><option value="BOSS_AUTHORIZED_DOWNLOAD">BOSS 官方授权下载</option><option value="AUTHORIZED_TEXT">已获授权的文本</option><option value="INTERNAL_AUTHORIZED">内部合规资料</option></select></div>
       {mode === "file" ? <div className="field full"><label htmlFor="resume-file">简历文件</label><input id="resume-file" name="file" type="file" accept=".pdf,.docx,.txt,.md" required /><small>支持 PDF、DOCX、TXT、Markdown，单个文件不超过 10MB。</small></div> : <>
         <div className="field"><label htmlFor="resume-filename">档案名称</label><input id="resume-filename" name="fileName" defaultValue="粘贴简历.txt" /></div>
-        <div className="field full"><label htmlFor="resume-text">简历正文</label><textarea id="resume-text" name="rawText" required placeholder={"姓名：张三\n职位：海外增长负责人\n2022-至今 | 某科技公司 | 海外业务负责人 | 负责 Google、Meta 与商业化"} /></div>
+        <div className="field full"><label htmlFor="resume-text">简历正文</label><textarea id="resume-text" name="rawText" required placeholder="粘贴已获授权的候选人简历全文" /></div>
       </>}
       <div className="field full"><label htmlFor="resume-basis">处理依据</label><input id="resume-basis" name="legalBasis" required defaultValue="候选人主动提供并授权用于当前招聘" /><small>必须能说明简历为何可被当前团队处理并永久保留。</small></div>
     </div>
