@@ -17,6 +17,28 @@ let settings: typeof import("../src/lib/settings");
 let pluginAuth: typeof import("../src/lib/plugin-auth");
 let seed: typeof import("../src/lib/seed");
 
+function createTextPdf(text: string) {
+  const content = `BT /F1 12 Tf 72 720 Td (${text}) Tj ET`;
+  const objects = [
+    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n",
+    "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+    `5 0 obj\n<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream\nendobj\n`,
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  for (const object of objects) {
+    offsets.push(Buffer.byteLength(pdf));
+    pdf += object;
+  }
+  const xrefOffset = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  pdf += offsets.slice(1).map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("");
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  return Buffer.from(pdf);
+}
+
 before(async () => {
   repository = await import("../src/lib/repository");
   database = await import("../src/lib/db");
@@ -57,6 +79,11 @@ test("legacy fixed demo people and companies are removed during migration", () =
   assert.equal(count("organizations", "org-northstar"), 0);
   assert.equal(count("people", "person-lin"), 0);
   assert.equal(count("organizations", "legacy-company"), 1);
+});
+
+test("PDF resume text is parsed by the bundled Node worker", async () => {
+  const text = await resumes.extractResumeText("authorized-resume.pdf", "application/pdf", createTextPdf("Authorized resume PDF import works"));
+  assert.match(text, /Authorized resume PDF import works/);
 });
 
 test("resume learning builds people, companies, graph and search tasks idempotently", async () => {

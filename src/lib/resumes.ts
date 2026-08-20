@@ -34,7 +34,7 @@ function resumeFrom(row: Row): ResumeDocument {
   };
 }
 
-async function extractText(fileName: string, mimeType: string, buffer: Buffer) {
+export async function extractResumeText(fileName: string, mimeType: string, buffer: Buffer) {
   const extension = extname(fileName).toLowerCase();
   if (extension === ".pdf" || mimeType === "application/pdf") {
     const parser = new PDFParse({ data: buffer });
@@ -68,7 +68,7 @@ export async function importResume(input: {
   if (input.buffer && (!allowedExtensions.has(extension) || input.buffer.length > MAX_FILE_SIZE)) {
     throw new Error("只支持 10MB 以内的 PDF、DOCX、TXT 或 Markdown 文件");
   }
-  const extractedText = input.rawText?.trim() || (input.buffer ? await extractText(input.fileName, input.mimeType, input.buffer) : "");
+  const extractedText = input.rawText?.trim() || (input.buffer ? await extractResumeText(input.fileName, input.mimeType, input.buffer) : "");
   if (extractedText.length < 20) throw new Error("简历正文过短或无法解析，请检查文件内容");
   if (extractedText.length > 200_000) throw new Error("简历正文超过 20 万字符，请拆分后导入");
   const contentHash = createHash("sha256").update(extractedText).digest("hex");
