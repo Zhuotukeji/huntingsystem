@@ -1,16 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Check, Clipboard, ExternalLink, LoaderCircle, MessageSquareText, Search } from "lucide-react";
 import type { SearchTask } from "@/lib/types";
 
-export function SearchTaskWorkbench({ tasks }: { tasks: SearchTask[] }) {
+export function SearchTaskWorkbench({ tasks, initialQuery = "" }: { tasks: SearchTask[]; initialQuery?: string }) {
   const router = useRouter();
+  const [query, setQuery] = useState(initialQuery);
   const [active, setActive] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const filtered = useMemo(() => tasks.filter((task) => [task.title, task.companyName, task.campaignName, ...task.query.keywords, ...task.query.locations].join(" ").toLowerCase().includes(query.trim().toLowerCase())), [query, tasks]);
   async function copy(task: SearchTask) {
     await navigator.clipboard.writeText([task.companyName, task.query.keywords[0], task.query.locations[0]].filter(Boolean).join(" "));
     setCopied(task.id); window.setTimeout(() => setCopied(null), 1500);
@@ -28,7 +30,8 @@ export function SearchTaskWorkbench({ tasks }: { tasks: SearchTask[] }) {
     if (response.ok) { setActive(null); router.refresh(); }
   }
   return <div className="task-workbench">
-    {tasks.map((task) => <article className="search-task" key={task.id}>
+    <div className="toolbar"><div className="search-field"><Search size={15} /><input aria-label="搜索 BOSS 任务" placeholder="搜索公司、职位或关键词" value={query} onChange={(event) => setQuery(event.target.value)} /></div></div>
+    {filtered.map((task) => <article className="search-task" key={task.id}>
       <div className="search-task-main">
         <div className="priority-box"><strong>{task.priority}</strong><span>优先级</span></div>
         <div className="search-task-content"><div className="search-task-title"><div><h3>{task.title}</h3><p>{task.campaignName} · {task.reason.summary}</p></div><span className={`status-badge status-${task.status.toLowerCase().replaceAll("_", "-")}`}><i />{task.status}</span></div>
@@ -42,7 +45,7 @@ export function SearchTaskWorkbench({ tasks }: { tasks: SearchTask[] }) {
         <div className="form-actions"><button type="button" className="button" onClick={() => setActive(null)}>取消</button><button className="button primary" disabled={loading}>{loading ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />}提交并学习</button></div>
       </form> : null}
     </article>)}
-    {!tasks.length ? <div className="empty-state"><Search size={28} /><strong>暂时没有搜索任务</strong><p>先导入简历并运行 AI 增量学习，系统会根据公司图谱生成下一批 BOSS 搜索词。</p></div> : null}
+    {!filtered.length ? <div className="empty-state"><Search size={28} /><strong>{tasks.length ? "没有符合搜索条件的任务" : "暂时没有搜索任务"}</strong><p>{tasks.length ? "调整公司、职位或关键词。" : "先导入简历并运行 AI 增量学习，系统会根据公司图谱生成下一批 BOSS 搜索词。"}</p></div> : null}
     {message ? <div className="toast"><Check size={17} />{message}</div> : null}
   </div>;
 }

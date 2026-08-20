@@ -6,7 +6,9 @@ import { listResumeProfiles } from "@/lib/resumes";
 
 export const dynamic = "force-dynamic";
 
-export default function ResumesPage() {
+export default async function ResumesPage({ searchParams }: { searchParams: Promise<{ q?: string | string[] }> }) {
+  const rawQuery = (await searchParams).q;
+  const initialQuery = Array.isArray(rawQuery) ? rawQuery[0] : rawQuery || "";
   const campaigns = listCampaigns();
   const resumes = listResumeProfiles();
   const ready = resumes.filter((item) => item.status === "READY").length;
@@ -19,6 +21,6 @@ export default function ResumesPage() {
       <Metric icon={FileClock} label="待处理" value={pending} detail="午夜任务优先处理新增和变化" tone="amber" />
       <Metric icon={ShieldCheck} label="保留规则" value="永久" detail="长期沉淀人才与公司知识" tone="purple" />
     </div>
-    <section className="section"><div className="section-head"><div><h3>候选人档案</h3><p>默认按最近更新显示；展开可查看任职、技能、来源和学习状态</p></div></div><ResumeLibrary resumes={resumes} campaigns={campaigns} /></section>
+    <section className="section"><div className="section-head"><div><h3>候选人档案</h3><p>默认按最近更新显示；展开可查看任职、技能、来源和学习状态</p></div></div><ResumeLibrary key={initialQuery} resumes={resumes} campaigns={campaigns} initialQuery={initialQuery} /></section>
   </>;
 }

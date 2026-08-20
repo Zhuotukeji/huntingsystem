@@ -13,8 +13,8 @@ const sourceLabels: Record<string, string> = {
   AUTHORIZED_TEXT: "授权文本", INTERNAL_ARCHIVE: "内部合规存档", INTERNAL_AUTHORIZED: "内部授权资料",
 };
 
-export function ResumeLibrary({ resumes, campaigns }: { resumes: ResumeProfile[]; campaigns: Campaign[] }) {
-  const [query, setQuery] = useState("");
+export function ResumeLibrary({ resumes, campaigns, initialQuery = "" }: { resumes: ResumeProfile[]; campaigns: Campaign[]; initialQuery?: string }) {
+  const [query, setQuery] = useState(initialQuery);
   const [status, setStatus] = useState("ALL");
   const [campaignId, setCampaignId] = useState("ALL");
   const [expanded, setExpanded] = useState<string | null>(null);

@@ -7,9 +7,9 @@ import type { CampaignOrganization, ReviewStatus } from "@/lib/types";
 import { organizationStatusLabels } from "@/lib/labels";
 import { StatusBadge } from "@/components/ui";
 
-export function OrganizationWorkbench({ organizations }: { organizations: CampaignOrganization[] }) {
+export function OrganizationWorkbench({ organizations, initialQuery = "" }: { organizations: CampaignOrganization[]; initialQuery?: string }) {
   const router = useRouter();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [status, setStatus] = useState("ALL");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<string | null>(null);

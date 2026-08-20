@@ -16,6 +16,7 @@ let learning: typeof import("../src/lib/learning");
 let settings: typeof import("../src/lib/settings");
 let pluginAuth: typeof import("../src/lib/plugin-auth");
 let resumeCapture: typeof import("../src/lib/resume-capture");
+let headerData: typeof import("../src/lib/header-data");
 let seed: typeof import("../src/lib/seed");
 
 function createTextPdf(text: string) {
@@ -48,6 +49,7 @@ before(async () => {
   settings = await import("../src/lib/settings");
   pluginAuth = await import("../src/lib/plugin-auth");
   resumeCapture = await import("../src/lib/resume-capture");
+  headerData = await import("../src/lib/header-data");
   seed = await import("../src/lib/seed");
 });
 
@@ -119,6 +121,22 @@ test("resume learning builds people, companies, graph and search tasks idempoten
   await learning.executeAiRun(rebuild.id);
   const rebuiltEdgeCount = Number((database.db.prepare("SELECT COUNT(*) AS count FROM graph_edges WHERE source_resume_id = ?").get(first.resume.id) as { count: number }).count);
   assert.equal(rebuiltEdgeCount, edgeCount);
+});
+
+test("header search and notifications are backed by current workspace data", () => {
+  const people = headerData.searchHeaderData("张三");
+  assert.ok(people.some((item) => item.kind === "person" && item.title === "张三"));
+  assert.ok(people.some((item) => item.kind === "resume" && item.href.includes("%E5%BC%A0%E4%B8%89")));
+
+  const organizations = headerData.searchHeaderData("星河");
+  assert.ok(organizations.some((item) => item.kind === "organization" && item.title === "广州星河网络有限公司"));
+  assert.ok(organizations.every((item) => item.href.startsWith("/")));
+  assert.deepEqual(headerData.searchHeaderData("   "), []);
+
+  const notifications = headerData.getHeaderNotifications();
+  assert.equal(notifications.count, notifications.items.reduce((total, item) => total + item.count, 0));
+  assert.ok(notifications.items.some((item) => item.kind === "organization" && item.count > 0));
+  assert.ok(notifications.items.some((item) => item.kind === "person" && item.count > 0));
 });
 
 test("plugin task transitions are explicit and actor-bound", () => {

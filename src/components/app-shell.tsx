@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Bell, BrainCircuit, BriefcaseBusiness, Building2, ChevronDown, ClipboardList, FileText, LayoutDashboard, Menu, Network, Search, Settings, Users, X } from "lucide-react";
+import { BrainCircuit, BriefcaseBusiness, Building2, ChevronDown, ClipboardList, FileText, LayoutDashboard, Menu, Network, Search, Settings, Users, X } from "lucide-react";
+import { HeaderTools } from "@/components/header-tools";
 
 const navigation = [
   { href: "/", label: "工作台", icon: LayoutDashboard },
@@ -55,10 +56,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="topbar">
           <button className="mobile-menu icon-button" onClick={() => setOpen(true)} aria-label="打开菜单" title="打开菜单"><Menu size={20} /></button>
           <div><h1>{titles[titleKey || "/"]}</h1><span className="topbar-context">海外项目负责人寻访</span></div>
-          <div className="topbar-actions">
-            <button className="global-search" title="全局搜索"><Search size={17} /><span>搜索公司、人选或任务</span><kbd>⌘ K</kbd></button>
-            <button className="icon-button" aria-label="通知" title="通知"><Bell size={19} /><i /></button>
-          </div>
+          <HeaderTools />
         </header>
         <main className="main-content">{children}</main>
       </div>

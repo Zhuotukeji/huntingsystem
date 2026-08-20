@@ -7,9 +7,9 @@ import type { CampaignPerson, PersonStatus } from "@/lib/types";
 import { personStatusLabels } from "@/lib/labels";
 import { Score, StatusBadge } from "@/components/ui";
 
-export function PersonWorkbench({ people }: { people: CampaignPerson[] }) {
+export function PersonWorkbench({ people, initialQuery = "" }: { people: CampaignPerson[]; initialQuery?: string }) {
   const router = useRouter();
-  const [query, setQuery] = useState(""); const [status, setStatus] = useState("ALL"); const [view, setView] = useState<"cards" | "table">("cards"); const [selected, setSelected] = useState<Set<string>>(new Set()); const [expanded, setExpanded] = useState<string | null>(null); const [loading, setLoading] = useState(false); const [message, setMessage] = useState("");
+  const [query, setQuery] = useState(initialQuery); const [status, setStatus] = useState("ALL"); const [view, setView] = useState<"cards" | "table">("cards"); const [selected, setSelected] = useState<Set<string>>(new Set()); const [expanded, setExpanded] = useState<string | null>(null); const [loading, setLoading] = useState(false); const [message, setMessage] = useState("");
   const filtered = useMemo(() => people.filter((item) => (status === "ALL" || item.status === status) && `${item.name}${item.headline}${item.organizationName}${item.slot}`.toLowerCase().includes(query.toLowerCase())), [people, query, status]);
   function toggle(id: string) { setSelected((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }
   async function review(nextStatus: PersonStatus, ids = [...selected]) {

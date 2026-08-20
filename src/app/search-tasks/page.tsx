@@ -5,7 +5,9 @@ import { listSearchTasks } from "@/lib/learning";
 
 export const dynamic = "force-dynamic";
 
-export default function SearchTasksPage() {
+export default async function SearchTasksPage({ searchParams }: { searchParams: Promise<{ q?: string | string[] }> }) {
+  const rawQuery = (await searchParams).q;
+  const initialQuery = Array.isArray(rawQuery) ? rawQuery[0] : rawQuery || "";
   const tasks = listSearchTasks();
   const open = tasks.filter((task) => ["NEW", "CLAIMED", "IN_PROGRESS"].includes(task.status));
   return <>
@@ -16,6 +18,6 @@ export default function SearchTasksPage() {
       <Metric icon={CheckCircle2} label="已完成" value={tasks.filter((task) => task.status === "COMPLETED").length} detail="至少发现 1 名合格人选" tone="amber" />
       <Metric icon={MessageSquareText} label="有效沟通" value="反馈口径" detail="合格且完成实质双向沟通" tone="purple" />
     </div>
-    <section className="section"><div className="section-head"><div><h3>执行队列</h3><p>复制搜索词、打开 BOSS、人工筛选并回填结果</p></div></div><SearchTaskWorkbench tasks={open} /></section>
+    <section className="section"><div className="section-head"><div><h3>执行队列</h3><p>复制搜索词、打开 BOSS、人工筛选并回填结果</p></div></div><SearchTaskWorkbench key={initialQuery} tasks={open} initialQuery={initialQuery} /></section>
   </>;
 }
