@@ -135,3 +135,152 @@ export interface DashboardData {
   recentPeople: CampaignPerson[];
   funnel: Array<{ label: string; value: number; color: string }>;
 }
+
+export type ResumeStatus = "PENDING" | "PROCESSING" | "READY" | "NEEDS_REVIEW" | "FAILED";
+
+export interface ResumeDocument {
+  id: string;
+  campaignId: string;
+  campaignName: string;
+  personId: string | null;
+  personName: string | null;
+  fileName: string;
+  mimeType: string;
+  sourceType: string;
+  legalBasis: string;
+  contentHash: string;
+  status: ResumeStatus;
+  parseVersion: string;
+  errorMessage: string;
+  retentionUntil: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  analyzedAt: string | null;
+}
+
+export interface EmploymentRecord {
+  id: string;
+  personId: string;
+  organizationId: string;
+  organizationName: string;
+  rawTitle: string;
+  normalizedRole: string;
+  startDate: string | null;
+  endDate: string | null;
+  isCurrent: boolean;
+  summary: string;
+  confidence: number;
+}
+
+export type AiRunStatus = "QUEUED" | "RUNNING" | "PARTIAL_SUCCESS" | "SUCCEEDED" | "FAILED" | "CANCELLED";
+
+export interface AiRun {
+  id: string;
+  campaignId: string | null;
+  campaignName: string | null;
+  runType: "NIGHTLY" | "MANUAL" | "UPLOAD" | "REBUILD";
+  businessDate: string | null;
+  status: AiRunStatus;
+  stage: string;
+  scope: Record<string, unknown>;
+  summary: string;
+  metrics: Record<string, number>;
+  errorMessage: string;
+  triggeredBy: string;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export type SearchTaskStatus = "NEW" | "CLAIMED" | "IN_PROGRESS" | "COMPLETED" | "NO_RESULT" | "LOW_QUALITY" | "DEFERRED" | "EXPIRED" | "CANCELLED";
+
+export interface SearchTask {
+  id: string;
+  campaignId: string;
+  campaignName: string;
+  runId: string | null;
+  taskType: string;
+  title: string;
+  companyName: string;
+  query: {
+    keywords: string[];
+    locations: string[];
+    experience: string;
+    instructions: string[];
+  };
+  reason: {
+    summary: string;
+    evidence: string[];
+    expectedCandidate: string;
+  };
+  priority: number;
+  status: SearchTaskStatus;
+  claimedBy: string | null;
+  expiresAt: string;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface GraphNode {
+  id: string;
+  type: "PERSON" | "ORGANIZATION" | "SKILL";
+  label: string;
+  detail: string;
+  score: number;
+  status: string;
+}
+
+export interface GraphEdge {
+  id: string;
+  fromId: string;
+  toId: string;
+  type: string;
+  weight: number;
+  confidence: number;
+  label: string;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  metrics: {
+    people: number;
+    organizations: number;
+    skills: number;
+    evidenceBackedEdges: number;
+  };
+  companyInsights: Array<{
+    organizationId: string;
+    name: string;
+    talentCount: number;
+    targetRoleCount: number;
+    score: number;
+    reasons: string[];
+  }>;
+}
+
+export interface AiProviderSettings {
+  provider: "sub2api";
+  baseUrl: string;
+  model: string;
+  apiStyle: "chat_completions" | "responses";
+  hasApiKey: boolean;
+  maskedApiKey: string;
+  enabled: boolean;
+  screenAnalysisEnabled: boolean;
+  updatedAt: string | null;
+}
+
+export interface LearningRecommendation {
+  id: string;
+  campaignId: string;
+  runId: string | null;
+  recommendationType: string;
+  title: string;
+  reason: string;
+  payload: Record<string, unknown>;
+  confidence: number;
+  status: "PENDING_REVIEW" | "AUTO_APPLIED" | "APPROVED" | "REJECTED";
+  createdAt: string;
+}

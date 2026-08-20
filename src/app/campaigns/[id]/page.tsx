@@ -27,8 +27,9 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
     <section className="section">
       <div className="section-head"><div><h3>AI 工作流</h3><p>所有发现结果都先进入人工审核，不会自动淘汰或联系候选人</p></div></div>
       <div className="toolbar" style={{ padding: 14 }}>
-        <DiscoveryButton campaignId={id} type="organizations" label="运行公司发现" />
-        <DiscoveryButton campaignId={id} type="people" label="从批准公司找人" variant="secondary" />
+        <DiscoveryButton campaignId={id} type="organizations" label="运行图谱增量学习" />
+        <a className="button" href="/resumes">导入授权简历</a>
+        <a className="button" href="/search-tasks">查看 BOSS 搜索任务</a>
         <DiscoveryButton campaignId={id} type="insighttracker" label="生成 InsightTracker 调研任务" variant="secondary" />
       </div>
     </section>

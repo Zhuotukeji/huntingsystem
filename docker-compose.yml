@@ -6,8 +6,11 @@ services:
     environment:
       DATABASE_PATH: /app/data/hunting.db
       DEMO_MODE: "true"
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6}
+      SUB2API_BASE_URL: ${SUB2API_BASE_URL:-}
+      SUB2API_API_KEY: ${SUB2API_API_KEY:-}
+      SUB2API_MODEL: ${SUB2API_MODEL:-gpt-5.6}
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-local-docker-key-change-in-production}
+      PLUGIN_ACCESS_CODE: ${PLUGIN_ACCESS_CODE:-}
     volumes:
       - hunting-data:/app/data
     restart: unless-stopped
@@ -19,8 +22,11 @@ services:
     environment:
       DATABASE_PATH: /app/data/hunting.db
       DEMO_MODE: "true"
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6}
+      SUB2API_BASE_URL: ${SUB2API_BASE_URL:-}
+      SUB2API_API_KEY: ${SUB2API_API_KEY:-}
+      SUB2API_MODEL: ${SUB2API_MODEL:-gpt-5.6}
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-local-docker-key-change-in-production}
+      PLUGIN_ACCESS_CODE: ${PLUGIN_ACCESS_CODE:-}
     volumes:
       - hunting-data:/app/data
     restart: unless-stopped

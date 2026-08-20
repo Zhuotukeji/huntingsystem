@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "觅才 BOSS 寻访助手",
+  "version": "0.1.0",
+  "description": "连接觅才后台，辅助 HR 手工执行 BOSS 搜索任务和显式截图分析。",
+  "permissions": ["activeTab", "storage", "sidePanel", "tabs"],
+  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "打开觅才寻访助手" },
+  "side_panel": { "default_path": "sidepanel.html" }
+}

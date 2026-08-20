@@ -9,8 +9,9 @@ export const dynamic = "force-dynamic";
 export default function DashboardPage() {
   const data = getDashboard();
   const maxFunnel = Math.max(...data.funnel.map((item) => item.value), 1);
+  const today = new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", weekday: "long", month: "long", day: "numeric" }).format(new Date());
   return <>
-    <PageIntro eyebrow="Wednesday · 19 August" title="早上好，陈晨" description={`系统已按证据质量和业务匹配度排好今天的工作。先处理 ${data.metrics.pendingCompanies + data.metrics.pendingPeople} 条待判断记录，再启动下一轮发现。`} />
+    <PageIntro eyebrow={today} title="今日寻访进度" description={`系统已按证据质量和业务匹配度排好今天的工作。先处理 ${data.metrics.pendingCompanies + data.metrics.pendingPeople} 条待判断记录，再启动下一轮发现。`} />
     <div className="metrics-grid">
       <Metric icon={Building2} label="待审核公司" value={data.metrics.pendingCompanies} detail="优先审核高于 80 分的公司" tone="green" />
       <Metric icon={Users} label="待审核人选" value={data.metrics.pendingPeople} detail="含需要补充证据的人选" tone="blue" />

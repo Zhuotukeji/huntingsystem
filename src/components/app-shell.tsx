@@ -3,19 +3,23 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Bell, Bot, BriefcaseBusiness, Building2, ChevronDown, ClipboardList, Database, LayoutDashboard, Menu, Search, Settings, Users, X } from "lucide-react";
+import { Bell, Bot, BrainCircuit, BriefcaseBusiness, Building2, ChevronDown, ClipboardList, Database, FileText, LayoutDashboard, Menu, Network, Search, Settings, Users, X } from "lucide-react";
 
 const navigation = [
   { href: "/", label: "工作台", icon: LayoutDashboard },
   { href: "/campaigns", label: "寻访战役", icon: BriefcaseBusiness },
-  { href: "/organizations", label: "公司发现", icon: Building2, count: 4 },
-  { href: "/people", label: "人员发现", icon: Users, count: 3 },
+  { href: "/resumes", label: "简历库", icon: FileText },
+  { href: "/graph", label: "人才图谱", icon: Network },
+  { href: "/search-tasks", label: "BOSS 搜索任务", icon: ClipboardList },
+  { href: "/learning", label: "AI 学习中心", icon: BrainCircuit },
+  { href: "/organizations", label: "公司发现", icon: Building2 },
+  { href: "/people", label: "人员发现", icon: Users },
   { href: "/research", label: "调研导入", icon: Database },
-  { href: "/tasks", label: "智能体任务", icon: Bot, count: 1 },
+  { href: "/tasks", label: "智能体任务", icon: Bot },
 ];
 
 const titles: Record<string, string> = {
-  "/": "今日工作台", "/campaigns": "寻访战役", "/organizations": "公司发现", "/people": "人员发现", "/research": "调研导入", "/tasks": "智能体任务", "/settings": "数据源与设置",
+  "/": "今日工作台", "/campaigns": "寻访战役", "/resumes": "简历库", "/graph": "公司与人才图谱", "/search-tasks": "BOSS 搜索任务", "/learning": "AI 学习中心", "/organizations": "公司发现", "/people": "人员发现", "/research": "调研导入", "/tasks": "智能体任务", "/settings": "数据源与设置",
 };
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -36,7 +40,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {navigation.map((item) => {
             const Icon = item.icon;
             const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-            return <Link key={item.href} href={item.href} className={`nav-item ${active ? "active" : ""}`} onClick={() => setOpen(false)}><Icon size={18} /><span>{item.label}</span>{item.count ? <small>{item.count}</small> : null}</Link>;
+            return <Link key={item.href} href={item.href} className={`nav-item ${active ? "active" : ""}`} onClick={() => setOpen(false)}><Icon size={18} /><span>{item.label}</span></Link>;
           })}
           <p className="nav-group-label nav-group-spaced">系统</p>
           <Link href="/settings" className={`nav-item ${pathname.startsWith("/settings") ? "active" : ""}`} onClick={() => setOpen(false)}><Settings size={18} /><span>数据源与设置</span></Link>

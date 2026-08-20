@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createHash } from "node:crypto";
 import { db, json, now } from "@/lib/db";
 import "@/lib/seed";
+import { getAiRuntimeConfig } from "@/lib/settings";
 import type { AgentTask, Campaign, CampaignOrganization, CampaignPerson, DashboardData, Evidence, PersonStatus, ReviewStatus } from "@/lib/types";
 
 type Row = Record<string, string | number | null>;
@@ -100,8 +101,9 @@ export function reviewPeople(ids: string[], status: PersonStatus, reason = "") {
 export function createTask(input: { campaignId?: string; type: string; status?: AgentTask["status"]; title: string; resultSummary?: string; payload?: Record<string, unknown>; steps?: string[]; idempotencyKey?: string }) {
   const id = randomUUID();
   const timestamp = now();
+  const ai = getAiRuntimeConfig();
   db.prepare(`INSERT INTO tasks (id, campaign_id, type, status, title, result_summary, payload_json, steps_json, attempts, max_attempts, model_name, estimated_cost, idempotency_key, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 3, ?, 0, ?, ?, ?)`)
-    .run(id, input.campaignId || null, input.type, input.status || "QUEUED", input.title, input.resultSummary || "等待执行", JSON.stringify(input.payload || {}), JSON.stringify(input.steps || []), process.env.OPENAI_API_KEY ? process.env.OPENAI_MODEL || "gpt-5.6" : "demo-agent-v1", input.idempotencyKey || null, timestamp, input.status === "SUCCEEDED" ? timestamp : null);
+    .run(id, input.campaignId || null, input.type, input.status || "QUEUED", input.title, input.resultSummary || "等待执行", JSON.stringify(input.payload || {}), JSON.stringify(input.steps || []), ai.enabled ? ai.model : "deterministic-fallback", input.idempotencyKey || null, timestamp, input.status === "SUCCEEDED" ? timestamp : null);
   return getTask(id)!;
 }
 
