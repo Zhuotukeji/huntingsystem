@@ -13,14 +13,15 @@
 
 ## 已实现
 
-- 授权简历库：PDF、DOCX、TXT、Markdown、粘贴文本，10MB 限制、SHA-256 去重、180 天默认保留期。
+- 授权简历库：默认展示可搜索档案列表，展开查看候选人、任职、技能、来源和学习状态；点击新增后才显示 PDF、DOCX、TXT、Markdown 与粘贴导入模块；10MB 限制、SHA-256 去重、永久保留。
 - 公司/人才图谱：人物、公司、技能节点；现任、曾任、技能证据边；公司人才密度洞察。
 - AI 学习中心：增量学习、全量重建、运行阶段/错误/指标审计、午夜调度。
 - 搜索任务工作台：公司、职位、地区组合，优先级、复制关键词、打开 BOSS、结果反馈。
 - 持续学习：贝叶斯平滑、小步更新、`0.65-1.35` 权重边界、至少 3 个样本后生成人审建议。
 - Sub2API 配置页：Base URL、`gpt-5.6`、Chat Completions/Responses API、连接测试。
 - 密钥保护：API Key 和插件访问码以 AES-256-GCM 密文存入 SQLite，接口不回传明文。
-- Chrome MV3 侧边栏插件：内部登录、任务列表、搜索词、显式截图分析、个性化招呼语草稿。
+- 公司发现：AI 只从授权简历的任职经历中发现并补全公司，以列表展示人才数、职位、市场、渠道、评分和简历证据。
+- Chrome MV3 侧边栏插件 V0.2：端口自动探测、内部登录、任务领取/执行/反馈、授权简历导入、显式截图分析和个性化招呼语草稿。
 - 无 AI 降级：未配置 Sub2API 时可解析带明确字段的结构化文本，不会生成虚构公司或候选人。
 
 ## 合规边界
@@ -37,7 +38,7 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-打开 [http://localhost:3000](http://localhost:3000)。首次启动只创建默认“海外项目负责人”人才画像，不创建虚构公司或人选。
+推荐执行 `pnpm dev --port 3010` 并打开 [http://localhost:3010](http://localhost:3010)；默认的 3000 端口也受支持。首次启动只创建默认“海外项目负责人”人才画像，不创建虚构公司或人选。
 
 启动午夜学习 Worker：
 
@@ -49,10 +50,16 @@ pnpm worker
 
 ## Chrome 插件
 
-1. 在设置页保存插件访问码并按需启用截图分析。
+```bash
+pnpm extension:assets
+pnpm extension:check
+pnpm extension:pack
+```
+
+1. 在设置页保存插件访问码，并按需配置 Sub2API、启用截图分析。
 2. 打开 `chrome://extensions`，启用开发者模式。
-3. 加载仓库中的 `extension/` 目录。
-4. 点击扩展图标，在侧边栏登录内部系统。
+3. 加载仓库中的 `extension/` 目录，或下载并解压 `artifacts/hunting-extension-v0.2.0.zip` 后加载。
+4. 点击扩展图标。插件会依次检测 `localhost:3010`、`localhost:3000`，登录后即可领取任务、回填反馈或导入授权简历。
 
 详细说明见 [extension/README.md](extension/README.md)。
 
@@ -62,9 +69,11 @@ pnpm worker
 pnpm lint
 pnpm test
 pnpm build
+pnpm extension:check
+pnpm extension:pack
 ```
 
-测试覆盖初始空库、公司导入去重、简历去重、图谱构建、重建幂等、搜索任务、反馈学习边界和密钥加密。
+测试覆盖初始空库、简历永久保留与去重、图谱构建、重建幂等、插件任务状态机、反馈学习边界、会话过期、截图来源和密钥加密。
 
 ## Docker
 

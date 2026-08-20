@@ -1,25 +1,68 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>觅才寻访助手</title><link rel="stylesheet" href="sidepanel.css"></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>觅才寻访助手</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
 <body>
-  <header><div class="mark">觅</div><div><strong>觅才寻访助手</strong><span>BOSS 人工搜索工作台</span></div><button id="logout" class="icon" title="退出内部登录" aria-label="退出">↪</button></header>
+  <header class="app-header">
+    <img src="icons/icon32.png" width="32" height="32" alt="">
+    <div class="brand"><strong>觅才寻访助手</strong><span>BOSS 人工搜索工作台</span></div>
+    <span id="connection-badge" class="connection checking"><i></i><span>检测中</span></span>
+  </header>
+
   <main>
-    <section id="login-view">
-      <h1>连接内部系统</h1>
-      <p>使用管理员在“数据源与设置”中配置的插件访问码。</p>
-      <label>后台地址<input id="backend" value="http://localhost:3000"></label>
-      <label>工作邮箱<input id="email" type="email" placeholder="hr@company.com"></label>
-      <label>插件访问码<input id="access-code" type="password" autocomplete="current-password"></label>
-      <button id="login" class="primary">登录</button>
+    <section id="onboarding-view" class="onboarding">
+      <div class="intro-mark">01</div>
+      <h1>连接招聘后台</h1>
+      <p>正在优先检测 3010，再检测 3000。连接成功后会保存地址。</p>
+      <div class="connection-box">
+        <div><strong id="probe-title">正在寻找本地服务</strong><span id="probe-detail">请保持觅才后台正在运行</span></div>
+        <button id="probe" class="icon-button" type="button" title="重新检测" aria-label="重新检测">↻</button>
+      </div>
+      <label for="backend">后台地址</label><input id="backend" type="url" value="http://localhost:3010" spellcheck="false">
+      <label for="email">工作邮箱</label><input id="email" type="email" placeholder="hr@company.com" autocomplete="email">
+      <label for="access-code">插件访问码</label><input id="access-code" type="password" autocomplete="current-password" placeholder="由管理员在设置页配置">
+      <button id="login" class="button primary full" type="button">登录并连接</button>
+      <div class="boundary-note"><strong>数据边界</strong><span>插件只在你点击后截取当前可见页面，不读取 BOSS DOM、Cookie、密码或后台标签页。</span></div>
     </section>
-    <section id="tasks-view" hidden>
-      <div class="section-head"><div><h1>今日搜索任务</h1><p id="task-count">正在载入</p></div><button id="refresh" class="icon" title="刷新任务" aria-label="刷新">↻</button></div>
-      <div id="tasks"></div>
-      <div id="analysis" hidden><div class="section-head"><div><h2>当前截图判断</h2><p>仅分析当前可见卡片，不返回姓名</p></div><button id="close-analysis" class="icon" aria-label="关闭">×</button></div><div id="analysis-content"></div></div>
+
+    <section id="workspace-view" hidden>
+      <nav class="tabs" aria-label="插件功能"><button class="tab active" data-view="tasks" type="button">任务</button><button class="tab" data-view="import" type="button">导入简历</button><button class="tab" data-view="settings" type="button">设置</button></nav>
+      <section id="tasks-view" class="view">
+        <div class="section-head"><div><h1>搜索任务</h1><p id="task-count">正在载入</p></div><button id="refresh" class="icon-button" type="button" title="刷新任务" aria-label="刷新任务">↻</button></div>
+        <div id="tasks" class="task-list" aria-live="polite"></div>
+        <section id="analysis" class="analysis-panel" hidden><div class="section-head"><div><h2>当前截图判断</h2><p id="analysis-note">仅依据当前可见内容</p></div><button id="close-analysis" class="icon-button" type="button" title="关闭分析" aria-label="关闭分析">×</button></div><div id="analysis-content"></div></section>
+      </section>
+
+      <section id="import-view" class="view" hidden>
+        <div class="section-head"><div><h1>导入授权简历</h1><p>导入成功后自动进入增量学习队列</p></div></div>
+        <label for="campaign">人才画像</label><select id="campaign"></select>
+        <div class="segmented" role="group" aria-label="导入方式"><button class="active" data-import-mode="file" type="button">文件</button><button data-import-mode="text" type="button">粘贴文本</button></div>
+        <div id="file-input-wrap"><label for="resume-file">简历文件</label><input id="resume-file" type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"><small>PDF、DOCX 或 TXT，单份不超过 10MB</small></div>
+        <div id="text-input-wrap" hidden><label for="resume-text">简历正文</label><textarea id="resume-text" rows="10" placeholder="粘贴已经获得处理授权的简历正文"></textarea></div>
+        <label for="source-type">来源类型</label><select id="source-type"><option value="CANDIDATE_SHARED">候选人主动提供</option><option value="BOSS_AUTHORIZED_DOWNLOAD">BOSS 官方授权下载</option><option value="INTERNAL_AUTHORIZED">公司内部已授权资料</option><option value="AUTHORIZED_TEXT">其他已授权文本</option></select>
+        <label for="legal-basis">来源及处理依据</label><textarea id="legal-basis" rows="3" placeholder="例如：候选人于 2026-08-20 同意用于本岗位招聘评估"></textarea>
+        <label class="check-row"><input id="authorization-confirmed" type="checkbox"><span>我已确认该简历的来源和当前招聘处理依据，并可按公司制度永久保留。</span></label>
+        <button id="upload-resume" class="button primary full" type="button">导入并加入学习队列</button><div id="import-result" class="result-box" hidden></div>
+      </section>
+
+      <section id="settings-view" class="view" hidden>
+        <div class="section-head"><div><h1>插件设置</h1><p id="extension-version">版本</p></div></div>
+        <div class="status-list"><div><span>后台连接</span><strong id="settings-backend-status">待检测</strong></div><div><span>Sub2API</span><strong id="settings-ai-status">待检测</strong></div><div><span>截图分析</span><strong id="settings-screen-status">待检测</strong></div></div>
+        <label for="manual-backend">后台地址</label><input id="manual-backend" type="url" spellcheck="false">
+        <div class="button-row"><button id="save-backend" class="button" type="button">保存并重连</button><button id="open-synthetic" class="button" type="button">打开合成验收页</button></div>
+        <div class="boundary-note"><strong>截图验收</strong><span>合成页不含真实候选人数据。真实 BOSS 截图仍会在发送前逐次确认。</span></div>
+        <button id="logout" class="button danger full" type="button">退出内部登录</button>
+      </section>
     </section>
-    <p id="message" role="status"></p>
   </main>
-  <footer>不自动浏览、不读取 Cookie、不自动发送消息</footer>
+
+  <dialog id="feedback-dialog"><form method="dialog" id="feedback-form"><div class="section-head"><div><h2>提交任务反馈</h2><p id="feedback-task-title"></p></div><button class="icon-button" data-close-feedback type="button" title="关闭" aria-label="关闭">×</button></div><div class="number-grid"><label for="result-count">结果人数<input id="result-count" type="number" min="0" max="10000" value="0"></label><label for="qualified-count">符合画像<input id="qualified-count" type="number" min="0" max="10000" value="0"></label><label for="conversation-count">有效沟通<input id="conversation-count" type="number" min="0" max="10000" value="0"></label></div><label for="feedback-note">备注</label><textarea id="feedback-note" rows="3" placeholder="可记录关键词偏差或候选人共性"></textarea><div class="dialog-actions"><button class="button" data-close-feedback type="button">取消</button><button id="submit-feedback" class="button primary" value="default" type="submit">提交反馈</button></div></form></dialog>
+  <p id="toast" role="status" aria-live="polite"></p>
+  <footer>人工操作 · 可追溯反馈 · 不自动发送</footer>
   <script src="sidepanel.js"></script>
 </body>
 </html>

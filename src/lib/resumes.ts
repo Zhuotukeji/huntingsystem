@@ -4,7 +4,7 @@ import { extname, join } from "node:path";
 import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
 import { db, now } from "@/lib/db";
-import type { ResumeDocument } from "@/lib/types";
+import type { EmploymentRecord, ResumeDocument, ResumeProfile } from "@/lib/types";
 
 type Row = Record<string, string | number | null>;
 
@@ -52,12 +52,6 @@ async function extractText(fileName: string, mimeType: string, buffer: Buffer) {
   return buffer.toString("utf8").trim();
 }
 
-function retentionDate(days = 180) {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString();
-}
-
 export async function importResume(input: {
   campaignId: string;
   fileName: string;
@@ -93,7 +87,7 @@ export async function importResume(input: {
   db.prepare(`INSERT INTO resume_documents
     (id, campaign_id, person_id, file_name, mime_type, source_type, legal_basis, storage_path, content_hash, extracted_text, status, parse_version, error_message, retention_until, created_by, created_at, updated_at, analyzed_at)
     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 'PENDING', '', '', ?, ?, ?, ?, NULL)`)
-    .run(id, input.campaignId, input.fileName, input.mimeType, input.sourceType, input.legalBasis.trim(), storagePath, contentHash, extractedText, retentionDate(), input.createdBy, timestamp, timestamp);
+    .run(id, input.campaignId, input.fileName, input.mimeType, input.sourceType, input.legalBasis.trim(), storagePath, contentHash, extractedText, null, input.createdBy, timestamp, timestamp);
   return { resume: getResume(id)!, duplicate: false };
 }
 
@@ -105,6 +99,24 @@ export function listResumes(campaignId?: string) {
     LEFT JOIN people p ON p.id = r.person_id
     ${where}
     ORDER BY r.created_at DESC`).all(...(campaignId ? [campaignId] : [])) as Row[]).map(resumeFrom);
+}
+
+export function listResumeProfiles(campaignId?: string): ResumeProfile[] {
+  return listResumes(campaignId).map((resume) => {
+    const person = resume.personId ? db.prepare("SELECT headline, location FROM people WHERE id = ?").get(resume.personId) as { headline: string; location: string } | undefined : undefined;
+    const employments = db.prepare(`SELECT e.*, o.name AS organization_name FROM employments e JOIN organizations o ON o.id = e.organization_id WHERE e.resume_id = ? ORDER BY e.sequence`).all(resume.id) as Row[];
+    const skills = db.prepare(`SELECT s.name, s.category, ps.confidence, ps.evidence_text FROM person_skills ps JOIN skills s ON s.id = ps.skill_id WHERE ps.resume_id = ? ORDER BY ps.confidence DESC, s.name`).all(resume.id) as Row[];
+    return {
+      ...resume,
+      personHeadline: person?.headline || "",
+      personLocation: person?.location || "",
+      employments: employments.map((row): EmploymentRecord => ({
+        id: String(row.id), personId: String(row.person_id), organizationId: String(row.organization_id), organizationName: String(row.organization_name), rawTitle: String(row.raw_title), normalizedRole: String(row.normalized_role),
+        startDate: row.start_date ? String(row.start_date) : null, endDate: row.end_date ? String(row.end_date) : null, isCurrent: Boolean(row.is_current), summary: String(row.summary), confidence: Number(row.confidence),
+      })),
+      skills: skills.map((row) => ({ name: String(row.name), category: String(row.category), confidence: Number(row.confidence), evidenceText: String(row.evidence_text) })),
+    };
+  });
 }
 
 export function getResume(id: string) {

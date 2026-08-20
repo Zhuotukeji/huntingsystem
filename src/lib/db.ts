@@ -379,6 +379,7 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_search_tasks_status ON search_tasks(status, priority DESC, created_at);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_search_feedback_task ON search_task_feedback(task_id);
   `);
+  db.exec("UPDATE resume_documents SET retention_until = NULL WHERE retention_until IS NOT NULL");
 }
 
 export function json<T>(value: string): T {

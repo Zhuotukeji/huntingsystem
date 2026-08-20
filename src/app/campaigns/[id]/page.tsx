@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
-import { Building2, Database, Search, Users } from "lucide-react";
-import { CampaignStatusButton, DiscoveryButton } from "@/components/action-button";
+import { Building2, Search, Users } from "lucide-react";
+import { CampaignStatusButton } from "@/components/action-button";
 import { PageIntro, StatusBadge } from "@/components/ui";
 import { campaignStatusLabels } from "@/lib/labels";
-import { getCampaign, listOrganizations, listPeople, listTasks } from "@/lib/repository";
+import { getCampaign, listOrganizations, listPeople } from "@/lib/repository";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,6 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
   if (!campaign) notFound();
   const organizations = listOrganizations(id);
   const people = listPeople(id);
-  const tasks = listTasks().filter((task) => task.campaignId === id);
   const approvedOrganizations = organizations.filter((item) => item.status === "APPROVED").length;
   const readyPeople = people.filter((item) => ["READY_TO_CONTACT", "CONTACTED", "ENGAGED", "CONVERTED"].includes(item.status)).length;
 
@@ -27,10 +26,9 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
     <section className="section">
       <div className="section-head"><div><h3>AI 工作流</h3><p>所有发现结果都先进入人工审核，不会自动淘汰或联系候选人</p></div></div>
       <div className="toolbar" style={{ padding: 14 }}>
-        <DiscoveryButton campaignId={id} type="organizations" label="运行图谱增量学习" />
+        <a className="button primary" href="/learning">运行图谱增量学习</a>
         <a className="button" href="/resumes">导入授权简历</a>
         <a className="button" href="/search-tasks">查看 BOSS 搜索任务</a>
-        <DiscoveryButton campaignId={id} type="insighttracker" label="生成 InsightTracker 调研任务" variant="secondary" />
       </div>
     </section>
 
@@ -44,11 +42,10 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
     </section>
 
     <section className="section">
-      <div className="section-head"><div><h3>发现进度</h3><p>本战役累计任务 {tasks.length} 个</p></div></div>
+      <div className="section-head"><div><h3>发现进度</h3><p>数据由授权简历学习并持续更新</p></div></div>
       <div className="panel">
         <div className="data-row"><div className="row-icon"><Building2 size={18} /></div><div className="row-main"><strong>公司地图</strong><span>{organizations.filter((item) => item.status === "PENDING_REVIEW").length} 家等待审核 · 目标 {campaign.targetOrganizationCount} 家</span></div><a href="/organizations" className="button small">审核公司</a></div>
         <div className="data-row"><div className="row-icon"><Users size={18} /></div><div className="row-main"><strong>人选队列</strong><span>{people.filter((item) => ["PENDING_REVIEW", "NEEDS_RESEARCH"].includes(item.status)).length} 人等待判断 · 目标 {campaign.targetPersonCount} 人</span></div><a href="/people" className="button small">审核人选</a></div>
-        <div className="data-row"><div className="row-icon"><Database size={18} /></div><div className="row-main"><strong>人工调研</strong><span>InsightTracker 无 API，采用指令包与合规人工导入</span></div><a href="/research" className="button small">进入调研</a></div>
         <div className="data-row"><div className="row-icon"><Search size={18} /></div><div className="row-main"><strong>搜索范围</strong><span>{campaign.locations.join("、")} · {campaign.markets.join("、")} · {campaign.channels.join("、")}</span></div></div>
       </div>
     </section>

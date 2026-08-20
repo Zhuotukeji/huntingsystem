@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { ArrowRight, Bot, Building2, Clock3, MessageSquareText, Sparkles, Target, UserCheck, Users } from "lucide-react";
+import { ArrowRight, Building2, Clock3, MessageSquareText, Target, UserCheck, Users } from "lucide-react";
 import { getDashboard } from "@/lib/repository";
-import { personStatusLabels, shortDate, taskStatusLabels } from "@/lib/labels";
+import { personStatusLabels, shortDate } from "@/lib/labels";
 import { Metric, PageIntro, StatusBadge } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -22,17 +22,10 @@ export default function DashboardPage() {
     <div className="content-grid">
       <div>
         <section className="section">
-          <div className="section-head"><div><h3>今天优先处理</h3><p>按人工等待和业务影响排序</p></div><Link className="text-link" href="/tasks">全部任务 <ArrowRight size={12} /></Link></div>
+          <div className="section-head"><div><h3>今天优先处理</h3><p>从简历学习结果进入人工判断</p></div><Link className="text-link" href="/search-tasks">BOSS 搜索任务 <ArrowRight size={12} /></Link></div>
           <div className="panel">
-            <ul className="row-list">
-              {data.urgentTasks.map((task) => <li className="data-row" key={task.id}>
-                <div className="row-icon"><Bot size={18} /></div>
-                <div className="row-main"><strong>{task.title}</strong><span>{task.resultSummary}</span></div>
-                <StatusBadge status={task.status} label={taskStatusLabels[task.status]} />
-                <Link className="button small" href={task.type.includes("INSIGHTTRACKER") ? "/research" : "/tasks"}>处理</Link>
-              </li>)}
-              {!data.urgentTasks.length ? <li className="data-row"><div className="row-icon"><Sparkles size={18} /></div><div className="row-main"><strong>今天的任务已处理完</strong><span>可进入战役启动下一轮发现</span></div></li> : null}
-            </ul>
+            <div className="data-row"><div className="row-icon"><Building2 size={18} /></div><div className="row-main"><strong>审核简历中发现的公司</strong><span>{data.metrics.pendingCompanies} 家等待确认业务匹配和证据</span></div><Link className="button small" href="/organizations">查看公司</Link></div>
+            <div className="data-row"><div className="row-icon"><Users size={18} /></div><div className="row-main"><strong>审核候选人档案</strong><span>{data.metrics.pendingPeople} 人等待判断或补充信息</span></div><Link className="button small" href="/people">查看人选</Link></div>
           </div>
         </section>
 

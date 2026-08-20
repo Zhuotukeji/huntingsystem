@@ -16,8 +16,10 @@ function campaignFrom(row: Row): Campaign {
   };
 }
 
-function evidenceFor(entityType: string, entityId: string): Evidence[] {
-  return (db.prepare("SELECT * FROM evidence WHERE entity_type = ? AND entity_id = ? ORDER BY classification, confidence DESC").all(entityType, entityId) as Row[]).map((row) => ({
+function evidenceFor(entityType: string, entityId: string, sourceProvider?: string): Evidence[] {
+  const providerClause = sourceProvider ? " AND source_provider = ?" : "";
+  const values = sourceProvider ? [entityType, entityId, sourceProvider] : [entityType, entityId];
+  return (db.prepare(`SELECT * FROM evidence WHERE entity_type = ? AND entity_id = ?${providerClause} ORDER BY classification, confidence DESC`).all(...values) as Row[]).map((row) => ({
     id: String(row.id), entityType: row.entity_type as Evidence["entityType"], entityId: String(row.entity_id), classification: row.classification as Evidence["classification"], claimText: String(row.claim_text), quote: String(row.quote), sourceTitle: String(row.source_title), sourceUrl: String(row.source_url), sourceProvider: String(row.source_provider), confidence: Number(row.confidence), observedAt: String(row.observed_at),
   }));
 }
@@ -52,12 +54,22 @@ export function updateCampaignStatus(id: string, status: Campaign["status"]) {
 }
 
 export function listOrganizations(campaignId?: string): CampaignOrganization[] {
-  const where = campaignId ? "WHERE co.campaign_id = ?" : "";
-  const rows = db.prepare(`SELECT co.*, o.name, o.domain, o.location, o.size FROM campaign_organizations co JOIN organizations o ON o.id = co.organization_id ${where} ORDER BY co.fit_score DESC, co.updated_at DESC`).all(...(campaignId ? [campaignId] : [])) as Row[];
-  return rows.map((row) => ({
+  const campaignClause = campaignId ? "AND co.campaign_id = ?" : "";
+  const rows = db.prepare(`SELECT co.*, o.name, o.domain, o.location, o.size
+    FROM campaign_organizations co JOIN organizations o ON o.id = co.organization_id
+    WHERE EXISTS (
+      SELECT 1 FROM employments e JOIN resume_documents r ON r.id = e.resume_id
+      WHERE e.organization_id = co.organization_id AND r.campaign_id = co.campaign_id
+    ) ${campaignClause}
+    ORDER BY co.fit_score DESC, co.updated_at DESC`).all(...(campaignId ? [campaignId] : [])) as Row[];
+  return rows.map((row) => {
+    const employments = db.prepare("SELECT DISTINCT e.person_id, e.raw_title FROM employments e JOIN resume_documents r ON r.id = e.resume_id WHERE e.organization_id = ? AND r.campaign_id = ? ORDER BY e.is_current DESC, e.sequence").all(String(row.organization_id), String(row.campaign_id)) as Array<{ person_id: string; raw_title: string }>;
+    return ({
     id: String(row.id), campaignId: String(row.campaign_id), organizationId: String(row.organization_id), name: String(row.name), domain: String(row.domain), location: String(row.location), size: String(row.size), category: String(row.category), status: row.status as ReviewStatus,
-    products: json(String(row.products_json)), markets: json(String(row.markets_json)), channels: json(String(row.channels_json)), monetization: json(String(row.monetization_json)), fitScore: Number(row.fit_score), evidenceCoverage: Number(row.evidence_coverage), confidence: Number(row.confidence), recommendationReason: String(row.recommendation_reason), unknowns: json(String(row.unknowns_json)), ownerName: String(row.owner_name), updatedAt: String(row.updated_at), evidence: evidenceFor("ORGANIZATION", String(row.organization_id)),
-  }));
+    products: json(String(row.products_json)), markets: json(String(row.markets_json)), channels: json(String(row.channels_json)), monetization: json(String(row.monetization_json)), fitScore: Number(row.fit_score), evidenceCoverage: Number(row.evidence_coverage), confidence: Number(row.confidence), recommendationReason: String(row.recommendation_reason), unknowns: json(String(row.unknowns_json)), ownerName: String(row.owner_name), updatedAt: String(row.updated_at), evidence: evidenceFor("ORGANIZATION", String(row.organization_id), "授权简历"),
+    talentCount: new Set(employments.map((item) => item.person_id)).size,
+    roleNames: [...new Set(employments.map((item) => item.raw_title).filter(Boolean))].slice(0, 8),
+  }); });
 }
 
 export function reviewOrganizations(ids: string[], status: ReviewStatus, reason = "") {

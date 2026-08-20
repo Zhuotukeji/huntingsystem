@@ -1,5 +1,4 @@
-import { Building2, Radar } from "lucide-react";
-import { DiscoveryButton } from "@/components/action-button";
+import { BrainCircuit, Building2 } from "lucide-react";
 import { OrganizationWorkbench } from "@/components/organization-workbench";
 import { PageIntro } from "@/components/ui";
 import { listCampaigns, listOrganizations } from "@/lib/repository";
@@ -9,10 +8,10 @@ export const dynamic = "force-dynamic";
 export default function OrganizationsPage() {
   const campaigns = listCampaigns();
   const campaign = campaigns.find((item) => item.status === "ACTIVE") || campaigns[0];
-  const organizations = campaign ? listOrganizations(campaign.id) : [];
+  const organizations = campaign ? listOrganizations(campaign.id).filter((organization) => organization.evidence.some((evidence) => evidence.sourceProvider === "授权简历")) : [];
   return <>
-    <PageIntro eyebrow="Company Intelligence" title="目标公司审核" description={`当前战役：${campaign?.name || "暂无"}。总分只用于排序，决策时同时查看匹配程度、证据覆盖率和身份可信度。`} actions={campaign ? <DiscoveryButton campaignId={campaign.id} type="organizations" label="运行公司发现" /> : undefined} />
-    <div className="compliance-note" style={{ marginTop: 0, marginBottom: 16 }}><Radar size={18} /><div><strong>发现边界</strong><br />当前可用来源为 InsightTracker 人工调研、BOSS 直聘人工线索与 HR 合规导入。系统不会自动登录或绕过平台限制。</div></div>
-    {organizations.length ? <OrganizationWorkbench organizations={organizations} /> : <div className="panel"><div className="empty-state"><Building2 size={28} /><strong>还没有公司线索</strong><p>先创建并激活寻访战役，再运行公司发现或导入调研资料。</p></div></div>}
+    <PageIntro eyebrow="Company Intelligence" title="公司发现" description={`当前战役：${campaign?.name || "暂无"}。公司由 AI 从授权简历的任职关系中学习产生，每条结论都保留原始简历证据。`} />
+    <div className="compliance-note" style={{ marginTop: 0, marginBottom: 16 }}><BrainCircuit size={18} /><div><strong>发现机制</strong><br />新增简历完成增量学习后，公司、任职职位、市场与渠道会更新到此列表；没有简历证据的公司不会展示。</div></div>
+    {organizations.length ? <OrganizationWorkbench organizations={organizations} /> : <div className="panel"><div className="empty-state"><Building2 size={28} /><strong>还没有从简历中发现公司</strong><p>先在简历库新增授权简历，再到 AI 学习中心运行增量学习。</p></div></div>}
   </>;
 }

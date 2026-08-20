@@ -13,7 +13,10 @@
     "lint": "eslint .",
     "test": "tsx --test tests/**/*.test.ts",
     "worker": "tsx src/worker.ts",
-    "db:reset": "tsx scripts/reset-db.ts"
+    "db:reset": "tsx scripts/reset-db.ts",
+    "extension:assets": "tsx scripts/generate-extension-icons.ts",
+    "extension:check": "tsx scripts/extension-tool.ts check",
+    "extension:pack": "tsx scripts/extension-tool.ts pack"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

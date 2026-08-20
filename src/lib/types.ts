@@ -58,6 +58,8 @@ export interface CampaignOrganization {
   ownerName: string;
   updatedAt: string;
   evidence: Evidence[];
+  talentCount: number;
+  roleNames: string[];
 }
 
 export type PersonStatus =
@@ -157,6 +159,13 @@ export interface ResumeDocument {
   createdAt: string;
   updatedAt: string;
   analyzedAt: string | null;
+}
+
+export interface ResumeProfile extends ResumeDocument {
+  personHeadline: string;
+  personLocation: string;
+  employments: EmploymentRecord[];
+  skills: Array<{ name: string; category: string; confidence: number; evidenceText: string }>;
 }
 
 export interface EmploymentRecord {

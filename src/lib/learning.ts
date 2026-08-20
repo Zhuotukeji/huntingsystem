@@ -321,13 +321,25 @@ export function ensureNightlyRun() {
   return createAiRun({ runType: "NIGHTLY", businessDate, triggeredBy: "系统定时任务" });
 }
 
-export function listSearchTasks(input: { campaignId?: string; status?: string; limit?: number } = {}) {
+export function listSearchTasks(input: { campaignId?: string; status?: string | string[]; limit?: number } = {}) {
   const clauses: string[] = [];
   const values: Array<string | number> = [];
   if (input.campaignId) { clauses.push("s.campaign_id = ?"); values.push(input.campaignId); }
-  if (input.status) { clauses.push("s.status = ?"); values.push(input.status); }
+  if (Array.isArray(input.status) && input.status.length) {
+    clauses.push(`s.status IN (${input.status.map(() => "?").join(",")})`);
+    values.push(...input.status);
+  } else if (typeof input.status === "string") { clauses.push("s.status = ?"); values.push(input.status); }
   values.push(input.limit || 100);
   return (db.prepare(`SELECT s.*, c.name AS campaign_name FROM search_tasks s JOIN campaigns c ON c.id = s.campaign_id ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY s.priority DESC, s.created_at DESC LIMIT ?`).all(...values) as Row[]).map(searchTaskFrom);
+}
+
+export function getSearchTask(id: string) {
+  const row = db.prepare("SELECT s.*, c.name AS campaign_name FROM search_tasks s JOIN campaigns c ON c.id = s.campaign_id WHERE s.id = ?").get(id) as Row | undefined;
+  return row ? searchTaskFrom(row) : null;
+}
+
+export function hasSearchTaskFeedback(id: string) {
+  return Boolean(db.prepare("SELECT 1 FROM search_task_feedback WHERE task_id = ?").get(id));
 }
 
 export function updateSearchTask(id: string, input: { status?: SearchTask["status"]; claimedBy?: string }) {
@@ -336,6 +348,26 @@ export function updateSearchTask(id: string, input: { status?: SearchTask["statu
     .run(input.status || null, input.claimedBy || null, input.status || null, timestamp, id);
   const row = db.prepare("SELECT s.*, c.name AS campaign_name FROM search_tasks s JOIN campaigns c ON c.id = s.campaign_id WHERE s.id = ?").get(id) as Row | undefined;
   return row ? searchTaskFrom(row) : null;
+}
+
+const pluginTransitions: Record<SearchTask["status"], SearchTask["status"][]> = {
+  NEW: ["CLAIMED"],
+  CLAIMED: ["IN_PROGRESS", "DEFERRED"],
+  IN_PROGRESS: ["DEFERRED"],
+  DEFERRED: ["CLAIMED", "IN_PROGRESS"],
+  COMPLETED: [],
+  NO_RESULT: [],
+  LOW_QUALITY: [],
+  EXPIRED: [],
+  CANCELLED: [],
+};
+
+export function transitionSearchTask(id: string, status: SearchTask["status"], actor: string) {
+  const row = db.prepare("SELECT status FROM search_tasks WHERE id = ?").get(id) as { status: SearchTask["status"] } | undefined;
+  if (!row) throw new Error("搜索任务不存在");
+  if (row.status === status) return updateSearchTask(id, { claimedBy: actor });
+  if (!pluginTransitions[row.status].includes(status)) throw new Error(`任务不能从 ${row.status} 变更为 ${status}`);
+  return updateSearchTask(id, { status, claimedBy: actor });
 }
 
 export function submitSearchTaskFeedback(input: { taskId: string; resultCount: number; qualifiedCount: number; effectiveConversations: number; note?: string; createdBy?: string }) {
@@ -399,8 +431,16 @@ export function reviewLearningRecommendation(id: string, status: "APPROVED" | "R
 export function getGraphData(campaignId?: string): GraphData {
   const campaignFilter = campaignId ? "AND cp.campaign_id = ?" : "";
   const args = campaignId ? [campaignId] : [];
-  const people = db.prepare(`SELECT DISTINCT p.id, p.name, p.headline, cp.fit_score, cp.status FROM people p JOIN campaign_people cp ON cp.person_id = p.id WHERE 1=1 ${campaignFilter}`).all(...args) as Row[];
-  const organizations = db.prepare(`SELECT DISTINCT o.id, o.name, o.location, co.fit_score, co.status FROM organizations o JOIN campaign_organizations co ON co.organization_id = o.id WHERE o.normalized_name <> '待核实任职公司' ${campaignId ? "AND co.campaign_id = ?" : ""}`).all(...args) as Row[];
+  const people = db.prepare(`SELECT DISTINCT p.id, p.name, p.headline, cp.fit_score, cp.status
+    FROM people p JOIN campaign_people cp ON cp.person_id = p.id
+    WHERE EXISTS (SELECT 1 FROM resume_documents r WHERE r.person_id = p.id AND r.campaign_id = cp.campaign_id) ${campaignFilter}`).all(...args) as Row[];
+  const organizations = db.prepare(`SELECT DISTINCT o.id, o.name, o.location, co.fit_score, co.status
+    FROM organizations o JOIN campaign_organizations co ON co.organization_id = o.id
+    WHERE o.normalized_name <> '待核实任职公司'
+      AND EXISTS (
+        SELECT 1 FROM employments e JOIN resume_documents r ON r.id = e.resume_id
+        WHERE e.organization_id = o.id AND r.campaign_id = co.campaign_id
+      ) ${campaignId ? "AND co.campaign_id = ?" : ""}`).all(...args) as Row[];
   const personIds = new Set(people.map((row) => String(row.id)));
   const organizationIds = new Set(organizations.map((row) => String(row.id)));
   const rawEdges = db.prepare("SELECT * FROM graph_edges ORDER BY confidence DESC LIMIT 3000").all() as Row[];
@@ -408,7 +448,10 @@ export function getGraphData(campaignId?: string): GraphData {
   const skillIds = [...new Set(edges.filter((row) => String(row.to_type) === "SKILL").map((row) => String(row.to_id)))];
   const skills = skillIds.length ? db.prepare(`SELECT * FROM skills WHERE id IN (${skillIds.map(() => "?").join(",")})`).all(...skillIds) as Row[] : [];
   const talentCounts = db.prepare(`SELECT o.id, o.name, COUNT(DISTINCT e.person_id) AS talent_count, COUNT(DISTINCT CASE WHEN e.normalized_role LIKE '%负责人%' OR e.normalized_role LIKE '%总监%' OR e.normalized_role LIKE '%manager%' OR e.normalized_role LIKE '%lead%' THEN e.person_id END) AS target_count, MAX(co.fit_score) AS score
-    FROM organizations o JOIN campaign_organizations co ON co.organization_id = o.id LEFT JOIN employments e ON e.organization_id = o.id
+    FROM organizations o
+    JOIN campaign_organizations co ON co.organization_id = o.id
+    JOIN employments e ON e.organization_id = o.id
+    JOIN resume_documents r ON r.id = e.resume_id AND r.campaign_id = co.campaign_id
     ${campaignId ? "WHERE co.campaign_id = ?" : ""} GROUP BY o.id, o.name ORDER BY score DESC, talent_count DESC LIMIT 50`).all(...args) as Row[];
   return {
     nodes: [

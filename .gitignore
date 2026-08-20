@@ -10,3 +10,5 @@ coverage/
 playwright-report/
 test-results/
 *.tsbuildinfo
+artifacts/*.zip
+artifacts/*.sha256

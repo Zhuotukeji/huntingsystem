@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateGreetingDraft } from "@/lib/llm";
-import { pluginCorsHeaders, requirePluginSession } from "@/lib/plugin-auth";
+import { pluginCorsHeaders, pluginErrorStatus, requirePluginSession } from "@/lib/plugin-auth";
 import { getCampaign } from "@/lib/repository";
 
 export const runtime = "nodejs";
@@ -20,6 +20,6 @@ export async function POST(request: Request) {
     };
     return NextResponse.json({ data: await generateGreetingDraft(campaign, candidate) }, { headers: pluginCorsHeaders });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "招呼语生成失败" }, { status: 400, headers: pluginCorsHeaders });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "招呼语生成失败" }, { status: pluginErrorStatus(error), headers: pluginCorsHeaders });
   }
 }
