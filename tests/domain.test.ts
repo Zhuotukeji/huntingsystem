@@ -18,6 +18,7 @@ let pluginAuth: typeof import("../src/lib/plugin-auth");
 let resumeCapture: typeof import("../src/lib/resume-capture");
 let headerData: typeof import("../src/lib/header-data");
 let seed: typeof import("../src/lib/seed");
+let extensionDelivery: typeof import("../src/lib/extension-delivery");
 
 function createTextPdf(text: string) {
   const content = `BT /F1 12 Tf 72 720 Td (${text}) Tj ET`;
@@ -51,6 +52,7 @@ before(async () => {
   resumeCapture = await import("../src/lib/resume-capture");
   headerData = await import("../src/lib/header-data");
   seed = await import("../src/lib/seed");
+  extensionDelivery = await import("../src/lib/extension-delivery");
 });
 
 test("initial workspace has a profile but no invented companies or people", () => {
@@ -175,6 +177,18 @@ test("Chrome plugin uses an expiring hashed internal session", () => {
   assert.equal(stored.token_hash.includes(session.token), false);
   database.db.prepare("UPDATE plugin_sessions SET expires_at = ? WHERE token_hash = ?").run("2000-01-01T00:00:00.000Z", stored.token_hash);
   assert.throws(() => pluginAuth.requirePluginSession(new Request("http://localhost/api/plugin/tasks", { headers: { Authorization: `Bearer ${session.token}` } })), /登录已失效/);
+});
+
+test("Chrome Web Store distribution only accepts an official extension URL", () => {
+  const extensionId = "abcdefghijklmnopabcdefghijklmnop";
+  const saved = settings.saveChromeDistributionSettings(`https://chromewebstore.google.com/detail/hunting-helper/${extensionId}?hl=zh-CN`);
+  assert.equal(saved.extensionId, extensionId);
+  assert.equal(saved.webStoreUrl, `https://chromewebstore.google.com/detail/hunting-helper/${extensionId}`);
+  const status = extensionDelivery.getExtensionDeliveryStatus();
+  assert.equal(status.deliveryMode, "WEB_STORE");
+  assert.equal(status.extensionId, extensionId);
+  assert.throws(() => settings.saveChromeDistributionSettings(`https://example.com/detail/${extensionId}`), /仅支持/);
+  assert.throws(() => settings.saveChromeDistributionSettings("https://chromewebstore.google.com/detail/no-extension-id"), /有效插件 ID/);
 });
 
 test("screenshot source only accepts BOSS or the bundled synthetic page", () => {

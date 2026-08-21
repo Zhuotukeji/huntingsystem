@@ -1,5 +1,6 @@
-import { Bot, BriefcaseBusiness, Chrome, Database, Download, PackageCheck, ShieldCheck } from "lucide-react";
+import { Bot, BriefcaseBusiness, Database, ShieldCheck } from "lucide-react";
 import { AiSettingsForm } from "@/components/ai-settings-form";
+import { ExtensionInstaller } from "@/components/extension-installer";
 import { PageIntro, StatusBadge } from "@/components/ui";
 import { getPublicAiSettings, hasPluginAccessCode } from "@/lib/settings";
 import { getExtensionDeliveryStatus } from "@/lib/extension-delivery";
@@ -17,13 +18,7 @@ export default function SettingsPage() {
   return <>
     <PageIntro eyebrow="Sources & Governance" title="数据源与设置" description="配置模型、插件访问和数据边界。密钥只在服务端解密使用，不会返回到浏览器。" />
     <section className="section"><div className="section-head"><div><h3>Sub2API 与插件配置</h3><p>保存后无需重启服务，下一次学习任务立即使用新配置</p></div></div><AiSettingsForm initial={{ ...ai, hasPluginAccessCode: hasPluginAccessCode() }} /></section>
-    <section className="section"><div className="section-head"><div><h3>Chrome 插件</h3><p>本机侧载版本与后端连接说明</p></div>{extension.downloadable ? <a className="button primary" href="/api/extension/download"><Download size={16} />下载 ZIP</a> : null}</div>
-      <div className="extension-delivery">
-        <div className="extension-summary"><div className="setting-icon"><Chrome size={21} /></div><div><strong>觅才 BOSS 寻访助手 v{extension.version}</strong><p>{extension.downloadable ? "分发包已生成，可下载或直接加载仓库 extension 目录。" : "源码已就绪，运行 pnpm extension:pack 后可在此下载分发包。"}</p></div><StatusBadge status={extension.downloadable ? "active" : "draft"} label={extension.downloadable ? "可安装" : "待打包"} /></div>
-        <ol className="install-steps"><li><span>1</span><p>解压 ZIP；或开发调试时直接使用仓库中的 <code>extension/</code> 目录。</p></li><li><span>2</span><p>打开 <code>chrome://extensions</code>，启用开发者模式，选择“加载已解压的扩展程序”。</p></li><li><span>3</span><p>启动后台后点击插件。它会依次检测 <code>localhost:3010</code> 和 <code>localhost:3000</code>，也可手动修改。</p></li></ol>
-        {extension.checksum ? <div className="checksum"><PackageCheck size={15} /><span>SHA-256</span><code>{extension.checksum}</code></div> : null}
-      </div>
-    </section>
+    <section className="section"><div className="section-head"><div><h3>Chrome 插件</h3><p>官方商店安装、版本检测与开发分发</p></div></div><ExtensionInstaller initial={extension} /></section>
     <section className="section"><div className="section-head"><div><h3>数据连接</h3><p>连接状态不会扩大外部平台的授权范围</p></div></div><div className="settings-list">{sources.map((source) => { const Icon = source.icon; return <div className="setting-row" key={source.name}><div className="setting-icon"><Icon size={20} /></div><div className="setting-main"><strong>{source.name}</strong><p>{source.detail}</p></div><StatusBadge status={source.status} label={source.label} /></div>; })}</div></section>
     <div className="compliance-note"><ShieldCheck size={18} /><div><strong>运行边界</strong><br />系统不会绕过登录、验证码、付费墙或平台反自动化机制；扫描只在 HR 主动开始后处理且不持久化画面；AI 不自动淘汰、录用或联系候选人。</div></div>
   </>;

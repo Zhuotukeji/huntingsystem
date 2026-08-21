@@ -21,7 +21,7 @@
 - Sub2API 配置页：Base URL、`gpt-5.6`、Chat Completions/Responses API、连接测试。
 - 密钥保护：API Key 和插件访问码以 AES-256-GCM 密文存入 SQLite，接口不回传明文。
 - 公司发现：AI 只从授权简历的任职经历中发现并补全公司，以列表展示人才数、职位、市场、渠道、评分和简历证据。
-- Chrome MV3 侧边栏插件 V0.4：端口自动探测、内部登录、任务领取/执行/反馈、结果页单屏判断、简历关键帧扫描和个性化招呼语草稿。
+- Chrome MV3 侧边栏插件 V0.5：支持 Chrome Web Store 在线安装与版本检测，并提供端口自动探测、内部登录、任务领取/执行/反馈、结果页单屏判断、简历关键帧扫描和个性化招呼语草稿。
 - 无 AI 降级：未配置 Sub2API 时可解析带明确字段的结构化文本，不会生成虚构公司或候选人。
 
 ## 合规边界
@@ -56,9 +56,13 @@ pnpm extension:check
 pnpm extension:pack
 ```
 
+正式分发建议先将插件发布为 Chrome Web Store 的“未公开”应用，然后在设置页的“商店发布配置”中保存详情页地址。HR 之后直接点击“安装到 Chrome”，完成 Chrome 强制的一次确认即可；后台会检测已安装版本。普通网页无法静默安装 ZIP 或未上架扩展。
+
+本地开发仍可使用侧载：
+
 1. 在设置页保存插件访问码，并按需配置 Sub2API、启用截图分析。
 2. 打开 `chrome://extensions`，启用开发者模式。
-3. 加载仓库中的 `extension/` 目录，或下载并解压 `artifacts/hunting-extension-v0.4.0.zip` 后加载。
+3. 加载仓库中的 `extension/` 目录，或下载并解压 `artifacts/hunting-extension-v0.5.0.zip` 后加载。
 4. 点击扩展图标。插件会依次检测 `localhost:3010`、`localhost:3000`，登录后即可领取任务、回填反馈或扫描 BOSS 简历。
 
 详细说明见 [extension/README.md](extension/README.md)。

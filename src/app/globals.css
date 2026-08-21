@@ -351,10 +351,16 @@ kbd { padding: 2px 5px; border: 1px solid var(--line-strong); border-bottom-widt
 .extension-delivery { border: 1px solid var(--line); background: white; }
 .extension-summary { min-height: 78px; padding: 14px 16px; display: flex; align-items: center; gap: 13px; border-bottom: 1px solid var(--line); }
 .extension-summary > div:nth-child(2) { min-width: 0; flex: 1; }.extension-summary strong { display: block; font-size: 13px; }.extension-summary p { margin: 4px 0 0; color: var(--subtle); font-size: 10px; }
+.extension-install-row { min-height: 92px; padding: 15px 16px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--line); }
+.extension-install-state { min-width: 0; display: flex; align-items: flex-start; gap: 10px; color: var(--green); }.extension-install-state > svg { margin-top: 1px; flex: 0 0 auto; }.extension-install-state > div { min-width: 0; }.extension-install-state strong { display: block; color: var(--ink); font-size: 12px; }.extension-install-state p { max-width: 620px; margin: 4px 0 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
+.extension-install-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .install-steps { margin: 0; padding: 7px 16px; list-style: none; }
 .install-steps li { min-height: 43px; display: flex; align-items:center; gap: 10px; border-bottom: 1px solid var(--line); }.install-steps li:last-child { border-bottom: 0; }
 .install-steps li > span { width: 23px; height: 23px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 50%; background: var(--green-soft); color: var(--green); font-size: 9px; font-weight: 750; }
 .install-steps p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }.install-steps code,.checksum code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.compact-install-steps { border-bottom: 1px solid var(--line); background: #fbfcfb; }
+.extension-config { border-bottom: 1px solid var(--line); }.extension-config summary { min-height: 42px; padding: 0 16px; display: flex; align-items: center; color: var(--muted); font-size: 10px; font-weight: 700; cursor: pointer; }.extension-config summary:hover { background: #f8faf9; color: var(--ink); }.extension-config[open] summary { border-bottom: 1px solid var(--line); }
+.extension-config-body { padding: 14px 16px 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }.extension-config-message { padding: 0 16px 12px; color: var(--green); font-size: 10px; }
 .checksum { padding: 10px 16px; display: grid; grid-template-columns:auto auto minmax(0,1fr); align-items: center; gap: 7px; border-top: 1px solid var(--line); background: var(--soft); color: var(--muted); font-size: 9px; }.checksum code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty-state { min-height: 200px; padding: 30px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--subtle); text-align: center; }.empty-state strong { margin-top: 11px; color: var(--ink); font-size: 13px; }.empty-state p { max-width: 360px; margin: 7px 0 0; font-size: 11px; line-height: 1.6; }
 .loading-stack div { height: 100px; margin-bottom: 14px; background: #e9eeeb; animation: pulse 1.3s ease-in-out infinite alternate; }.loading-stack div:first-child { height: 160px; }@keyframes pulse { to { opacity: .55; } }
@@ -373,11 +379,13 @@ kbd { padding: 2px 5px; border: 1px solid var(--line-strong); border-bottom-widt
   .modal-backdrop.command-backdrop { padding: 74px 12px 12px; }
   .command-dialog { max-height: calc(100vh - 92px); }
   .command-results { max-height: calc(100vh - 166px); }
+  .extension-install-row { align-items: stretch; flex-direction: column; }.extension-install-actions { justify-content: stretch; }.extension-install-actions .button { flex: 1; }.extension-config-body { grid-template-columns: 1fr; }.extension-config-body .button { width: 100%; }
 }
 
 @media (max-width: 420px) {
   .metrics-grid { grid-template-columns: 1fr; }.metric { border-right: 0; border-bottom: 1px solid var(--line); }.metric:nth-child(3) { border-bottom: 1px solid var(--line); }.metric:last-child { border-bottom: 0; }.entity-card { padding: 14px; }.campaign-card { min-height: 200px; }.page-actions { display: grid; grid-template-columns: 1fr; }.button { white-space: normal; }
   .import-progress { padding: 12px; }.import-progress-head { grid-template-columns: 28px minmax(0, 1fr); }.import-progress-icon { width: 28px; height: 28px; }.import-progress-head time { grid-column: 2; padding: 0; }.import-progress-steps { grid-template-columns: 1fr; gap: 7px; }.import-progress-steps li span { white-space: normal; }
+  .extension-summary { align-items: flex-start; flex-wrap: wrap; }.extension-summary > .status-badge { margin-left: 53px; }.extension-install-actions { display: grid; grid-template-columns: 1fr; }.checksum { grid-template-columns: auto minmax(0, 1fr); }.checksum code { grid-column: 1 / -1; }
 }
 
 @media (max-width: 760px) {

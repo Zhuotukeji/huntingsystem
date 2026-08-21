@@ -8,6 +8,7 @@ type SettingRow = { setting_key: string; setting_value: string; is_secret: numbe
 
 const defaultBaseUrl = process.env.SUB2API_BASE_URL || process.env.OPENAI_BASE_URL || "";
 const defaultModel = process.env.SUB2API_MODEL || process.env.OPENAI_MODEL || "gpt-5.6";
+const chromeWebStoreHosts = new Set(["chromewebstore.google.com", "chrome.google.com"]);
 
 function getMasterKey() {
   if (process.env.SETTINGS_ENCRYPTION_KEY) {
@@ -134,4 +135,40 @@ export function setPluginAccessCode(value: string) {
 
 export function hasPluginAccessCode() {
   return Boolean(getPluginAccessCode());
+}
+
+export function normalizeChromeWebStoreUrl(value: string) {
+  const input = value.trim();
+  if (!input) return { webStoreUrl: "", extensionId: "" };
+  let url: URL;
+  try {
+    url = new URL(input);
+  } catch {
+    throw new Error("请输入完整的 Chrome Web Store 地址");
+  }
+  const extensionId = url.pathname.split("/").filter(Boolean).findLast((segment) => /^[a-p]{32}$/.test(segment)) || "";
+  if (url.protocol !== "https:" || !chromeWebStoreHosts.has(url.hostname) || !extensionId) {
+    throw new Error("仅支持包含有效插件 ID 的 Chrome Web Store 地址");
+  }
+  url.search = "";
+  url.hash = "";
+  return { webStoreUrl: url.toString().replace(/\/$/, ""), extensionId };
+}
+
+export function getChromeDistributionSettings() {
+  const rows = valuesByKey();
+  const configured = plainValue(rows, "chrome_web_store_url", process.env.CHROME_WEB_STORE_URL || "");
+  let normalized = { webStoreUrl: "", extensionId: "" };
+  try {
+    normalized = normalizeChromeWebStoreUrl(configured);
+  } catch {
+    // Ignore an invalid environment default so the settings page remains recoverable.
+  }
+  return { ...normalized, updatedAt: rows.chrome_web_store_url?.updated_at || null };
+}
+
+export function saveChromeDistributionSettings(webStoreUrl: string) {
+  const normalized = normalizeChromeWebStoreUrl(webStoreUrl);
+  upsert("chrome_web_store_url", normalized.webStoreUrl);
+  return getChromeDistributionSettings();
 }

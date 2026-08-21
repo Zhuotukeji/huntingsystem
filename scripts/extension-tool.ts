@@ -6,7 +6,7 @@ import vm from "node:vm";
 const root = process.cwd();
 const extensionDirectory = join(root, "extension");
 const artifactDirectory = join(root, "artifacts");
-const expectedVersion = "0.4.0";
+const expectedVersion = "0.5.0";
 const artifactName = `hunting-extension-v${expectedVersion}.zip`;
 
 function crc32(buffer: Buffer) {
@@ -42,6 +42,8 @@ function check() {
   for (const prohibited of ["cookies", "scripting", "webRequest", "debugger", "downloads", "history"]) assert(!permissions.has(prohibited), `permission ${prohibited} is prohibited`);
   const hosts: string[] = manifest.host_permissions || [];
   assert(hosts.length === 2 && hosts.includes("http://localhost/*") && hosts.includes("http://127.0.0.1/*"), "host_permissions must be limited to local backend hosts");
+  const externalMatches: string[] = manifest.externally_connectable?.matches || [];
+  assert(externalMatches.length === 2 && externalMatches.every((match) => hosts.includes(match)), "external connection must be limited to local backend hosts");
   assert(manifest.content_security_policy?.extension_pages === "script-src 'self'; object-src 'self'", "extension CSP is not strict enough");
   for (const size of [16, 32, 48, 128]) {
     const iconPath = join(extensionDirectory, "icons", `icon${size}.png`);
@@ -53,6 +55,8 @@ function check() {
   for (const required of ["background.js", "sidepanel.html", "sidepanel.css", "capture.css", "scan-utils.js", "sidepanel.js", "synthetic.html", "synthetic.css", "README.md"]) assert(existsSync(join(extensionDirectory, required)), `${required} is missing`);
   for (const script of files(extensionDirectory).filter((path) => path.endsWith(".js"))) new vm.Script(readFileSync(script, "utf8"), { filename: relative(root, script) });
   const source = readFileSync(join(extensionDirectory, "sidepanel.js"), "utf8");
+  const backgroundSource = readFileSync(join(extensionDirectory, "background.js"), "utf8");
+  assert(backgroundSource.includes("onMessageExternal") && backgroundSource.includes("HUNTING_EXTENSION_PING"), "installation status handshake is missing");
   for (const prohibited of ["chrome.cookies", "chrome.scripting", "executeScript", "chrome.webRequest", "document.cookie"]) assert(!source.includes(prohibited), `prohibited API reference found: ${prohibited}`);
   assert(source.includes("captureVisibleTab") && source.includes("window.confirm"), "visible screenshot confirmation flow is missing");
   assert(source.includes("chrome.tabCapture.capture") && source.includes("captureVisibleTab"), "tab stream and compatible screenshot scan modes are required");

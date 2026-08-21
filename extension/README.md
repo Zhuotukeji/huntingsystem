@@ -1,6 +1,15 @@
-# 觅才 BOSS 寻访助手 V0.4
+# 觅才 BOSS 寻访助手 V0.5
 
-## 安装
+## 正式安装
+
+1. 将插件发布到 Chrome Web Store，可选择“未公开”分发。
+2. 在觅才后台“数据源与设置”的“商店发布配置”中保存商店详情页地址。
+3. HR 在后台点击“安装到 Chrome”，并完成 Chrome 要求的一次确认。
+4. 返回设置页后，系统会检测插件是否安装及版本是否匹配。
+
+Chrome 不允许普通网页静默安装 ZIP 或未上架扩展，因此商店发布是非受管设备实现简洁安装的必要前提。
+
+## 本地开发安装
 
 1. 启动觅才后台，推荐使用 `pnpm dev --port 3010`；插件会先检测 3010，再检测 3000。
 2. 在后台“数据源与设置”中配置至少 10 位的插件访问码；使用截图前还需配置 Sub2API 并启用截图分析。
@@ -35,4 +44,4 @@ pnpm extension:check
 pnpm extension:pack
 ```
 
-打包产物为 `artifacts/hunting-extension-v0.4.0.zip`，SHA-256 位于同名 `.sha256` 文件。
+打包产物为 `artifacts/hunting-extension-v0.5.0.zip`，SHA-256 位于同名 `.sha256` 文件。
