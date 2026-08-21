@@ -198,7 +198,9 @@ export async function extractResumeScreenshotSegmentWithAi(imageDataUrl: string)
     "只按阅读顺序逐行转录截图中明确可见的招聘履历事实，尽量一项事实一行；不要推断、补全、总结或评价。",
     "保留姓名（仅在画面明确出现时）、职位、公司、任职日期、项目、业绩、技能和教育经历。",
     "不得返回电话、邮箱、微信、身份证号、年龄、性别、婚育、照片描述等非必要个人信息。",
-    "如果不是单个候选人的简历详情页，将 isResumeDetail 设为 false。hasMoreBelow 只根据截图底部是否明显还有未展示内容判断。",
+    "判断时以画面中占主要面积的详情区域为准。BOSS 页面即使同时显示导航、会话列表或候选人侧栏，只要主体区域明确展示一位候选人的简历详情，isResumeDetail 就设为 true，并忽略侧栏中的其他候选人信息。",
+    "同一候选人详情页向下滚动后的截图可能不再显示姓名、头像和顶部简介；只要主体区域连续显示该候选人的工作经历、项目经历、教育经历或技能，isResumeDetail 仍设为 true。",
+    "只有在主体区域是搜索列表、多个并列候选人卡片、非简历页面、空白或共享提示时，才将 isResumeDetail 设为 false。hasMoreBelow 只根据截图底部是否明显还有未展示内容判断。",
     "输出符合指定结构的 JSON。",
   ].join("\n");
   if (runtime.config.apiStyle === "responses") {

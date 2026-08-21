@@ -12,3 +12,4 @@ test-results/
 *.tsbuildinfo
 artifacts/*.zip
 artifacts/*.sha256
+artifacts/hunting-extension-v*/

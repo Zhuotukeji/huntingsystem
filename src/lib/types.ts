@@ -68,10 +68,23 @@ export type PersonStatus =
   | "READY_TO_CONTACT"
   | "CONTACTED"
   | "ENGAGED"
+  | "SCREENING"
   | "CONVERTED"
+  | "INTERVIEWING"
+  | "OFFERED"
+  | "HIRED"
   | "TALENT_POOL"
   | "CLOSED"
+  | "WITHDRAWN"
   | "DO_NOT_CONTACT";
+
+export interface PersonStageEvent {
+  id: string;
+  status: string;
+  reason: string;
+  operatorName: string;
+  createdAt: string;
+}
 
 export interface CampaignPerson {
   id: string;
@@ -91,9 +104,11 @@ export interface CampaignPerson {
   unknowns: string[];
   riskFlags: string[];
   ownerName: string;
+  reviewReason: string;
   lastInteractionAt: string | null;
   updatedAt: string;
   evidence: Evidence[];
+  stageHistory: PersonStageEvent[];
 }
 
 export type TaskStatus =
@@ -139,6 +154,7 @@ export interface DashboardData {
 }
 
 export type ResumeStatus = "PENDING" | "PROCESSING" | "READY" | "NEEDS_REVIEW" | "FAILED";
+export type ResumeIdentityDecision = "AUTO_MERGED" | "NEW_PROFILE" | "REVIEW_REQUIRED" | "EXISTING_LINK";
 
 export interface ResumeDocument {
   id: string;
@@ -164,6 +180,13 @@ export interface ResumeDocument {
 export interface ResumeProfile extends ResumeDocument {
   personHeadline: string;
   personLocation: string;
+  identityDecision: ResumeIdentityDecision | null;
+  identityScore: number | null;
+  identityConfidence: number | null;
+  identityReasons: string[];
+  identityCandidateCount: number;
+  identityMatchedPersonId: string | null;
+  identityMatchedPersonName: string | null;
   employments: EmploymentRecord[];
   skills: Array<{ name: string; category: string; confidence: number; evidenceText: string }>;
 }

@@ -4,10 +4,13 @@ import { ExtensionInstaller } from "@/components/extension-installer";
 import { PageIntro, StatusBadge } from "@/components/ui";
 import { getPublicAiSettings, hasPluginAccessCode } from "@/lib/settings";
 import { getExtensionDeliveryStatus } from "@/lib/extension-delivery";
+import { hasPermission, requirePagePermission } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const user = await requirePagePermission("settings.view");
+  const canManage = hasPermission(user, "settings.manage");
   const ai = getPublicAiSettings();
   const extension = getExtensionDeliveryStatus();
   const sources = [
@@ -17,8 +20,8 @@ export default function SettingsPage() {
   ];
   return <>
     <PageIntro eyebrow="Sources & Governance" title="数据源与设置" description="配置模型、插件访问和数据边界。密钥只在服务端解密使用，不会返回到浏览器。" />
-    <section className="section"><div className="section-head"><div><h3>Sub2API 与插件配置</h3><p>保存后无需重启服务，下一次学习任务立即使用新配置</p></div></div><AiSettingsForm initial={{ ...ai, hasPluginAccessCode: hasPluginAccessCode() }} /></section>
-    <section className="section"><div className="section-head"><div><h3>Chrome 插件</h3><p>官方商店安装、版本检测与开发分发</p></div></div><ExtensionInstaller initial={extension} /></section>
+    {canManage ? <section className="section"><div className="section-head"><div><h3>Sub2API 与插件配置</h3><p>保存后无需重启服务，下一次学习任务立即使用新配置</p></div></div><AiSettingsForm initial={{ ...ai, hasPluginAccessCode: hasPluginAccessCode() }} /></section> : null}
+    {canManage ? <section className="section"><div className="section-head"><div><h3>Chrome 插件</h3><p>官方商店安装、版本检测与开发分发</p></div></div><ExtensionInstaller initial={extension} /></section> : null}
     <section className="section"><div className="section-head"><div><h3>数据连接</h3><p>连接状态不会扩大外部平台的授权范围</p></div></div><div className="settings-list">{sources.map((source) => { const Icon = source.icon; return <div className="setting-row" key={source.name}><div className="setting-icon"><Icon size={20} /></div><div className="setting-main"><strong>{source.name}</strong><p>{source.detail}</p></div><StatusBadge status={source.status} label={source.label} /></div>; })}</div></section>
     <div className="compliance-note"><ShieldCheck size={18} /><div><strong>运行边界</strong><br />系统不会绕过登录、验证码、付费墙或平台反自动化机制；扫描只在 HR 主动开始后处理且不持久化画面；AI 不自动淘汰、录用或联系候选人。</div></div>
   </>;

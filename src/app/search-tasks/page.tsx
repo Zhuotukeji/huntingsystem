@@ -2,10 +2,12 @@ import { CheckCircle2, ClipboardList, MessageSquareText, Search } from "lucide-r
 import { SearchTaskWorkbench } from "@/components/search-task-workbench";
 import { Metric, PageIntro } from "@/components/ui";
 import { listSearchTasks } from "@/lib/learning";
+import { hasPermission, requirePagePermission } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function SearchTasksPage({ searchParams }: { searchParams: Promise<{ q?: string | string[] }> }) {
+  const user = await requirePagePermission("search_tasks.view");
   const rawQuery = (await searchParams).q;
   const initialQuery = Array.isArray(rawQuery) ? rawQuery[0] : rawQuery || "";
   const tasks = listSearchTasks();
@@ -18,6 +20,6 @@ export default async function SearchTasksPage({ searchParams }: { searchParams: 
       <Metric icon={CheckCircle2} label="已完成" value={tasks.filter((task) => task.status === "COMPLETED").length} detail="至少发现 1 名合格人选" tone="amber" />
       <Metric icon={MessageSquareText} label="有效沟通" value="反馈口径" detail="合格且完成实质双向沟通" tone="purple" />
     </div>
-    <section className="section"><div className="section-head"><div><h3>执行队列</h3><p>复制搜索词、打开 BOSS、人工筛选并回填结果</p></div></div><SearchTaskWorkbench key={initialQuery} tasks={open} initialQuery={initialQuery} /></section>
+    <section className="section"><div className="section-head"><div><h3>执行队列</h3><p>复制搜索词、打开 BOSS、人工筛选并回填结果</p></div></div><SearchTaskWorkbench key={initialQuery} tasks={open} initialQuery={initialQuery} canManage={hasPermission(user, "search_tasks.manage")} /></section>
   </>;
 }

@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { Check, Clipboard, ExternalLink, LoaderCircle, MessageSquareText, Search } from "lucide-react";
 import type { SearchTask } from "@/lib/types";
 
-export function SearchTaskWorkbench({ tasks, initialQuery = "" }: { tasks: SearchTask[]; initialQuery?: string }) {
+export function SearchTaskWorkbench({ tasks, initialQuery = "", canManage = false }: { tasks: SearchTask[]; initialQuery?: string; canManage?: boolean }) {
   const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
   const [active, setActive] = useState<string | null>(null);
@@ -37,7 +37,7 @@ export function SearchTaskWorkbench({ tasks, initialQuery = "" }: { tasks: Searc
         <div className="search-task-content"><div className="search-task-title"><div><h3>{task.title}</h3><p>{task.campaignName} · {task.reason.summary}</p></div><span className={`status-badge status-${task.status.toLowerCase().replaceAll("_", "-")}`}><i />{task.status}</span></div>
           <div className="tag-row">{task.query.keywords.map((keyword) => <span className="tag" key={keyword}>{keyword}</span>)}{task.query.locations.map((location) => <span className="tag" key={location}>{location}</span>)}</div>
           <ol className="compact-steps">{task.query.instructions.map((instruction) => <li key={instruction}>{instruction}</li>)}</ol>
-          <div className="task-command-row"><button className="button small" onClick={() => copy(task)}>{copied === task.id ? <Check size={14} /> : <Clipboard size={14} />}{copied === task.id ? "已复制" : "复制搜索词"}</button><a className="button small" href="https://www.zhipin.com/web/geek/job" target="_blank" rel="noreferrer"><ExternalLink size={14} />打开 BOSS</a><button className="button primary small" onClick={() => begin(task)}><MessageSquareText size={14} />记录结果</button></div>
+          {canManage ? <div className="task-command-row"><button className="button small" onClick={() => copy(task)}>{copied === task.id ? <Check size={14} /> : <Clipboard size={14} />}{copied === task.id ? "已复制" : "复制搜索词"}</button><a className="button small" href="https://www.zhipin.com/web/geek/job" target="_blank" rel="noreferrer"><ExternalLink size={14} />打开 BOSS</a><button className="button primary small" onClick={() => begin(task)}><MessageSquareText size={14} />记录结果</button></div> : null}
         </div>
       </div>
       {active === task.id ? <form className="feedback-form" action={(formData) => feedback(task.id, formData)}>

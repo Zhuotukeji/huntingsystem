@@ -4,7 +4,7 @@ import { extname, join } from "node:path";
 import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
 import { db, now } from "@/lib/db";
-import type { EmploymentRecord, ResumeDocument, ResumeProfile } from "@/lib/types";
+import type { EmploymentRecord, ResumeDocument, ResumeIdentityDecision, ResumeProfile } from "@/lib/types";
 
 type Row = Record<string, string | number | null>;
 
@@ -104,12 +104,23 @@ export function listResumes(campaignId?: string) {
 export function listResumeProfiles(campaignId?: string): ResumeProfile[] {
   return listResumes(campaignId).map((resume) => {
     const person = resume.personId ? db.prepare("SELECT headline, location FROM people WHERE id = ?").get(resume.personId) as { headline: string; location: string } | undefined : undefined;
+    const identity = db.prepare(`SELECT rim.*, matched.name AS matched_person_name
+      FROM resume_identity_matches rim
+      LEFT JOIN people matched ON matched.id = rim.matched_person_id
+      WHERE rim.resume_id = ?`).get(resume.id) as Row | undefined;
     const employments = db.prepare(`SELECT e.*, o.name AS organization_name FROM employments e JOIN organizations o ON o.id = e.organization_id WHERE e.resume_id = ? ORDER BY e.sequence`).all(resume.id) as Row[];
     const skills = db.prepare(`SELECT s.name, s.category, ps.confidence, ps.evidence_text FROM person_skills ps JOIN skills s ON s.id = ps.skill_id WHERE ps.resume_id = ? ORDER BY ps.confidence DESC, s.name`).all(resume.id) as Row[];
     return {
       ...resume,
       personHeadline: person?.headline || "",
       personLocation: person?.location || "",
+      identityDecision: identity ? String(identity.decision) as ResumeIdentityDecision : null,
+      identityScore: identity ? Number(identity.score) : null,
+      identityConfidence: identity ? Number(identity.confidence) : null,
+      identityReasons: identity ? JSON.parse(String(identity.reasons_json)) as string[] : [],
+      identityCandidateCount: identity ? Number(identity.candidate_count) : 0,
+      identityMatchedPersonId: identity?.matched_person_id ? String(identity.matched_person_id) : null,
+      identityMatchedPersonName: identity?.matched_person_name ? String(identity.matched_person_name) : null,
       employments: employments.map((row): EmploymentRecord => ({
         id: String(row.id), personId: String(row.person_id), organizationId: String(row.organization_id), organizationName: String(row.organization_name), rawTitle: String(row.raw_title), normalizedRole: String(row.normalized_role),
         startDate: row.start_date ? String(row.start_date) : null, endDate: row.end_date ? String(row.end_date) : null, isCurrent: Boolean(row.is_current), summary: String(row.summary), confidence: Number(row.confidence),

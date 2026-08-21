@@ -50,6 +50,21 @@ export function sanitizeCapturedText(value: string) {
     .join("\n");
 }
 
+export function hasUsableResumeDetailEvidence(input: {
+  isResumeDetail: boolean;
+  sequence: number;
+  candidateName: string;
+  expectedCandidateName: string;
+  headline: string;
+  text: string;
+}) {
+  if (input.isResumeDetail) return true;
+  if (input.sequence === 1) {
+    return Boolean(input.candidateName.trim() && (input.headline.trim() || input.text.trim().length >= 80));
+  }
+  return Boolean(input.expectedCandidateName.trim() && input.text.trim().length >= 40);
+}
+
 function containsLineSequence(haystack: string[], needle: string[]) {
   if (!needle.length || needle.length > haystack.length) return false;
   const normalizedHaystack = haystack.map(normalizedLine);

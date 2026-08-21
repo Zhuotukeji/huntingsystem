@@ -116,7 +116,7 @@
             <tr><td>账号与连接配置</td><td>工作邮箱、本地后台地址、临时会话令牌、审核模式偏好</td><td>连接企业后台、保持登录和显示正确工作区</td></tr>
             <tr><td>招聘任务数据</td><td>人才画像、搜索词、任务状态、结果人数、符合画像人数、有效沟通人数和人工备注</td><td>执行招聘工作流并改进后续搜索建议</td></tr>
             <tr><td>当前页面内容</td><td>招聘人员主动分析时当前可见的 BOSS 候选人结果页截图</td><td>基于可见证据提供候选人匹配辅助判断</td></tr>
-            <tr><td>简历关键帧</td><td>招聘人员主动扫描并滚动简历时产生的最多 10 张变化关键帧</td><td>提取姓名、任职经历、教育、技能、项目和公司事实，合并为结构化简历</td></tr>
+            <tr><td>简历关键帧</td><td>招聘人员开始扫描后，每次主动点击“截取当前帧”产生并最终选取的最多 10 张关键帧</td><td>提取姓名、任职经历、教育、技能、项目和公司事实，合并为结构化简历</td></tr>
             <tr><td>技术状态</td><td>扩展版本、后台健康状态、AI 配置状态和操作错误信息</td><td>连接检测、兼容性校验和错误提示</td></tr>
           </tbody>
         </table>
@@ -127,7 +127,7 @@
     <section>
       <h2>3. 信息如何被触发和使用</h2>
       <ul>
-        <li>扩展不会在后台持续监控页面。截图分析和简历扫描必须由招聘人员点击按钮发起。</li>
+        <li>扩展不会在后台持续监控页面。截图分析和简历帧采集都必须由招聘人员点击侧边栏中的明确按钮触发。</li>
         <li>开始真实简历扫描前，招聘人员必须填写来源及处理依据并确认当前招聘用途。</li>
         <li>候选人判断仅提供证据、评分和未知项，最终决定由招聘人员作出。</li>
         <li>沟通内容只生成可复制草稿，扩展不会自动发送。</li>
@@ -158,8 +158,8 @@
     <section>
       <h2>6. Chrome 权限说明</h2>
       <ul>
-        <li><strong>activeTab：</strong>在用户主动操作后访问当前可见标签页。</li>
-        <li><strong>tabCapture：</strong>在用户主动扫描时建立临时标签页画面流；授权失效时使用 Chrome 原生标签页共享选择器。</li>
+        <li><strong>activeTab：</strong>在用户主动操作且 Chrome 已授予当前页临时权限时，确认允许捕获当前可见标签页。</li>
+        <li><strong>tabCapture：</strong>按已经校验的标签页 ID 定向取得当前 BOSS 页面或内置演示页的媒体流，不使用屏幕、窗口或插件侧边栏作为扫描来源。标签页流仅在本次扫描期间保存在内存中。</li>
         <li><strong>tabs：</strong>确认当前页面属于 BOSS 或内置演示页，并在用户点击后打开相应页面。</li>
         <li><strong>sidePanel：</strong>显示扩展的主要任务、扫描和设置界面。</li>
         <li><strong>storage：</strong>保存连接配置、会话和审核模式偏好。</li>
@@ -203,7 +203,7 @@
           <li><strong>Account and connection data:</strong> work email, local backend address, review-mode preference, and an expiring session token.</li>
           <li><strong>Recruiting workflow data:</strong> job profiles, search terms, task status, result counts, qualified counts, effective conversation counts, and recruiter notes.</li>
           <li><strong>Visible page content:</strong> a screenshot of the currently visible BOSS candidate results page when the recruiter explicitly requests analysis.</li>
-          <li><strong>Resume keyframes:</strong> up to ten changed frames captured while the recruiter explicitly scans and manually scrolls a resume.</li>
+          <li><strong>Resume keyframes:</strong> up to ten frames selected from screenshots explicitly triggered by the recruiter clicking “截取当前帧” in the side panel.</li>
           <li><strong>Technical status:</strong> extension version, local backend health, configured AI status, and operation errors.</li>
         </ul>
         <p>Raw pages may briefly contain photos or contact and identity details. The system instructs the AI not to return unnecessary identity data and removes phone numbers, email addresses, messaging IDs, government identifiers, age, sex, marital or parental status, and photo descriptions before merging structured resume data.</p>
@@ -212,7 +212,7 @@
       <section>
         <h2>Collection, use, and user control</h2>
         <ul>
-          <li>The extension does not continuously monitor pages in the background.</li>
+          <li>The extension does not continuously monitor pages in the background. Screenshot analysis and resume-frame capture each require an explicit side-panel button click by the recruiter.</li>
           <li>Real resume scans require the recruiter to record and confirm a lawful recruiting basis.</li>
           <li>Candidate assessments provide evidence, scores, and unknowns only; a human recruiter makes the final decision.</li>
           <li>Outreach is generated only as a copyable draft and is never sent automatically.</li>
@@ -240,8 +240,8 @@
       <section>
         <h2>Chrome permissions</h2>
         <ul>
-          <li><strong>activeTab:</strong> access the current visible tab after a user action.</li>
-          <li><strong>tabCapture:</strong> create a temporary tab stream during a user-initiated scan; Chrome's native tab-sharing picker is used when the temporary grant is unavailable.</li>
+          <li><strong>activeTab:</strong> preferentially capture the current visible tab after a user action when Chrome has granted temporary access to that tab.</li>
+          <li><strong>Tab-sharing fallback:</strong> if temporary tab access is unavailable, Chrome asks the user to choose a source. The extension accepts only a Chrome tab, rejects windows and entire screens, and requires first-frame confirmation. The stream remains in memory only for the current scan.</li>
           <li><strong>tabs:</strong> verify that the current page is a BOSS page or the bundled demo and open a page after a user action.</li>
           <li><strong>sidePanel:</strong> provide the primary tasks, scanning, and settings workspace.</li>
           <li><strong>storage:</strong> retain connection, session, and review-mode settings.</li>

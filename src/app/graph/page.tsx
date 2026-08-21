@@ -2,10 +2,12 @@ import { Building2, GitBranch, Network, Users } from "lucide-react";
 import { GraphExplorer } from "@/components/graph-explorer";
 import { Metric, PageIntro } from "@/components/ui";
 import { getGraphData } from "@/lib/learning";
+import { requirePagePermission } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export default function GraphPage() {
+export default async function GraphPage() {
+  await requirePagePermission("graph.view");
   const graph = getGraphData();
   return <>
     <PageIntro eyebrow="Evidence Graph" title="公司与人才图谱" description="从简历中的任职和技能证据建立关系。每条边都能追溯到来源简历，未知信息不会被补写成事实。" />

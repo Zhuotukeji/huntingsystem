@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>觅才 Chrome Web Store 素材</title>
+  <style>
+    :root {
+      --ink: #17221f;
+      --muted: #65706c;
+      --subtle: #89938f;
+      --line: #dfe6e2;
+      --line-strong: #ccd7d2;
+      --paper: #ffffff;
+      --canvas: #f4f7f5;
+      --soft: #eef3f0;
+      --green-950: #142622;
+      --green-800: #245f54;
+      --green-700: #2d7365;
+      --green-100: #e1efea;
+      --green-50: #f0f7f4;
+      --blue: #356b9a;
+      --blue-soft: #e7eff6;
+      --amber: #a75b25;
+      --amber-soft: #f8eadf;
+      --red: #a2463f;
+      --red-soft: #f7e7e5;
+      --purple: #6f5a89;
+      --purple-soft: #eee9f4;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: #d8dfdc; color: var(--ink); font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; letter-spacing: 0; }
+    body { padding: 0; }
+    svg { display: block; }
+    .asset { position: relative; overflow: hidden; background: var(--canvas); }
+    .asset + .asset { margin-top: 0; }
+    .shot { width: 1280px; height: 800px; }
+    .promo { width: 440px; height: 280px; }
+    .icon { width: 128px; height: 128px; }
+
+    .brand-lockup { display: flex; align-items: center; gap: 11px; }
+    .brand-symbol { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 8px; background: var(--green-950); color: white; }
+    .brand-lockup strong, .brand-lockup span { display: block; }
+    .brand-lockup strong { font-size: 18px; line-height: 1; }
+    .brand-lockup span { margin-top: 5px; color: var(--subtle); font-size: 9px; font-weight: 700; }
+    .eyebrow { color: var(--green-700); font-size: 13px; font-weight: 800; }
+    .headline { margin: 18px 0 0; font-size: 42px; line-height: 1.18; font-weight: 800; }
+    .subhead { margin: 18px 0 0; color: var(--muted); font-size: 16px; line-height: 1.75; }
+    .proof { margin-top: 28px; display: grid; gap: 11px; }
+    .proof div { display: flex; align-items: center; gap: 10px; color: #43514c; font-size: 13px; font-weight: 650; }
+    .proof i { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: var(--green-100); color: var(--green-800); font-size: 12px; font-style: normal; font-weight: 900; }
+    .privacy-pill { position: absolute; bottom: 42px; left: 52px; padding: 8px 11px; border-left: 3px solid var(--amber); background: var(--amber-soft); color: #7c491f; font-size: 11px; font-weight: 650; }
+
+    .browser-window { position: relative; overflow: hidden; border: 1px solid #c8d3ce; border-radius: 8px; background: white; box-shadow: 0 22px 55px rgba(20,38,34,.16); }
+    .browser-bar { height: 42px; padding: 0 14px; display: flex; align-items: center; gap: 9px; border-bottom: 1px solid var(--line); background: #f7f9f8; }
+    .browser-dots { display: flex; gap: 5px; }
+    .browser-dots i { width: 8px; height: 8px; border-radius: 50%; background: #c5cfca; }
+    .address { height: 25px; padding: 0 11px; display: flex; align-items: center; flex: 1; border: 1px solid var(--line); border-radius: 4px; background: white; color: var(--subtle); font-size: 9px; }
+    .chrome-menu { color: var(--subtle); font-size: 16px; }
+    .app { height: calc(100% - 42px); display: flex; }
+    .sidebar { width: 150px; flex: 0 0 auto; background: var(--green-950); color: #afc0bb; }
+    .side-brand { height: 56px; padding: 0 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(255,255,255,.08); }
+    .side-brand .mini-mark { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 5px; background: #d7e8e2; color: var(--green-950); }
+    .side-brand strong { color: white; font-size: 12px; }
+    .side-brand span { display: block; margin-top: 2px; color: #849891; font-size: 6px; font-weight: 700; }
+    .nav-label { margin: 15px 13px 6px; color: #718680; font-size: 7px; font-weight: 700; }
+    .nav { height: 30px; margin: 2px 8px; padding: 0 9px; display: flex; align-items: center; gap: 8px; border-radius: 4px; color: #aebfba; font-size: 9px; }
+    .nav.active { background: #27473f; color: white; }
+    .nav .nav-icon { width: 13px; color: currentColor; }
+    .workspace { min-width: 0; flex: 1; background: #f5f7f6; }
+    .topbar { height: 56px; padding: 0 19px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); background: white; }
+    .topbar strong { display: block; font-size: 11px; }
+    .topbar span { display: block; margin-top: 3px; color: var(--subtle); font-size: 7px; }
+    .top-actions { display: flex; align-items: center; gap: 7px; }
+    .global-search { width: 158px; height: 27px; padding: 0 8px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 4px; background: #f8faf9; color: var(--subtle); font-size: 7px; }
+    .bell { width: 27px; height: 27px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 4px; color: #5a6762; }
+    .main { padding: 18px 19px; }
+    .page-title { display: flex; justify-content: space-between; align-items: flex-end; }
+    .page-title .kicker { color: var(--green-700); font-size: 7px; font-weight: 800; }
+    .page-title h3 { margin: 4px 0 0; font-size: 17px; }
+    .page-title p { margin: 5px 0 0; color: var(--muted); font-size: 8px; }
+    .page-button { height: 28px; padding: 0 9px; display: flex; align-items: center; gap: 5px; border-radius: 4px; background: var(--green-800); color: white; font-size: 8px; font-weight: 700; }
+    .toolbar { height: 40px; margin-top: 14px; padding: 5px 7px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); background: white; }
+    .search-field { height: 28px; padding: 0 9px; display: flex; align-items: center; gap: 6px; flex: 1; border: 1px solid var(--line); border-radius: 4px; background: #fafbfb; color: var(--subtle); font-size: 8px; }
+    .select { height: 28px; padding: 0 9px; display: flex; align-items: center; border: 1px solid var(--line); border-radius: 4px; background: white; color: #4e5b56; font-size: 8px; }
+
+    /* Screenshot 1 */
+    #shot-1 { background: #eff4f1; }
+    #shot-1::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 366px; background: white; border-right: 1px solid var(--line); }
+    #shot-1 .story { position: absolute; z-index: 2; top: 48px; left: 52px; width: 275px; }
+    #shot-1 .stage { position: absolute; top: 48px; right: 34px; width: 880px; height: 704px; }
+    #shot-1 .task-card { margin-top: 10px; border: 1px solid var(--line); background: white; }
+    #shot-1 .task-main { padding: 13px; display: flex; gap: 11px; }
+    .priority { width: 48px; height: 48px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 5px; background: var(--green-100); color: var(--green-800); }
+    .priority strong { font-size: 17px; line-height: 1; }
+    .priority span { font-size: 6px; font-weight: 700; }
+    .task-content { min-width: 0; flex: 1; }
+    .task-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .task-head h4 { margin: 0; font-size: 11px; }
+    .task-head p { margin: 4px 0 0; color: var(--muted); font-size: 7px; }
+    .status { height: 18px; padding: 0 7px; display: flex; align-items: center; border-radius: 9px; background: var(--blue-soft); color: var(--blue); font-size: 6px; font-weight: 800; }
+    .tags { margin-top: 9px; display: flex; gap: 5px; }
+    .tag { height: 20px; padding: 0 7px; display: flex; align-items: center; border-radius: 3px; background: #eef2f0; color: #52605c; font-size: 7px; }
+    .instructions { margin: 9px 0 0; padding-left: 17px; color: #4d5a56; font-size: 7px; line-height: 1.8; }
+    .task-actions { margin-top: 10px; display: flex; gap: 6px; }
+    .mini-button { height: 26px; padding: 0 8px; display: flex; align-items: center; gap: 5px; border: 1px solid var(--line-strong); border-radius: 4px; color: #41504b; font-size: 7px; font-weight: 700; }
+    .mini-button.primary { border-color: var(--green-800); background: var(--green-800); color: white; }
+    .extension-panel { position: absolute; z-index: 6; right: 18px; top: 78px; width: 246px; height: 590px; overflow: hidden; border: 1px solid #9eafa8; border-radius: 7px; background: #f7f9f8; box-shadow: 0 18px 45px rgba(16,36,30,.24); }
+    .ext-head { height: 48px; padding: 0 10px; display: flex; align-items: center; gap: 8px; background: var(--green-950); color: white; }
+    .ext-logo { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 5px; background: #d8ebe4; color: var(--green-950); }
+    .ext-brand { min-width: 0; flex: 1; }
+    .ext-brand strong { display: block; font-size: 9px; }
+    .ext-brand span { display: block; margin-top: 2px; color: #9cb0aa; font-size: 6px; }
+    .connection { height: 18px; padding: 0 6px; display: flex; align-items: center; gap: 4px; border: 1px solid #38524b; border-radius: 3px; color: #c9d6d2; font-size: 6px; }
+    .connection i { width: 5px; height: 5px; border-radius: 50%; background: #69b69f; }
+    .ext-tabs { height: 34px; margin: 10px; padding: 3px; display: grid; grid-template-columns: repeat(3,1fr); gap: 3px; border-radius: 4px; background: #e7ece9; }
+    .ext-tabs span { display: grid; place-items: center; color: var(--muted); font-size: 7px; font-weight: 700; }
+    .ext-tabs .active { border-radius: 3px; background: white; color: var(--green-800); }
+    .ext-body { padding: 0 10px; }
+    .ext-title { display: flex; justify-content: space-between; align-items: flex-start; }
+    .ext-title h4 { margin: 0; font-size: 11px; }
+    .ext-title p { margin: 3px 0 0; color: var(--muted); font-size: 6px; }
+    .ext-task { margin-top: 9px; padding: 10px; border: 1px solid var(--line); border-radius: 5px; background: white; }
+    .ext-task-top { display: flex; gap: 7px; }
+    .ext-priority { width: 31px; height: 31px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 4px; background: var(--green-100); color: var(--green-800); font-size: 11px; font-weight: 800; }
+    .ext-task h5 { margin: 0; font-size: 8px; }
+    .ext-task p { margin: 4px 0 0; color: var(--muted); font-size: 6px; line-height: 1.45; }
+    .query { margin-top: 7px; padding: 7px; background: var(--soft); color: #3e4d48; font-size: 7px; font-weight: 650; }
+    .ext-buttons { margin-top: 7px; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+    .ext-buttons span { height: 26px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 4px; color: #46534f; font-size: 6px; font-weight: 700; }
+    .ext-buttons .open { border-color: var(--green-800); background: var(--green-800); color: white; }
+    .ext-foot { position: absolute; inset: auto 0 0; height: 27px; display: grid; place-items: center; border-top: 1px solid var(--line); background: white; color: var(--subtle); font-size: 6px; }
+
+    /* Screenshot 2 */
+    #shot-2 { background: var(--green-950); }
+    #shot-2 .story-dark { position: absolute; top: 52px; left: 54px; width: 310px; color: white; }
+    #shot-2 .story-dark .brand-lockup span { color: #91a59f; }
+    #shot-2 .story-dark .eyebrow { margin-top: 62px; color: #8dd0bd; }
+    #shot-2 .story-dark .headline { font-size: 40px; }
+    #shot-2 .story-dark .subhead { color: #aebfba; }
+    #shot-2 .story-dark .proof div { color: #d2dfdb; }
+    #shot-2 .story-dark .proof i { background: #29483f; color: #9bd8c7; }
+    #shot-2 .analysis-stage { position: absolute; top: 40px; right: 35px; width: 846px; height: 720px; overflow: hidden; border: 1px solid #49645b; border-radius: 8px; background: #f4f7f5; box-shadow: 0 25px 65px rgba(0,0,0,.35); }
+    .synthetic-page { position: absolute; inset: 0 310px 0 0; background: white; }
+    .platform-head { height: 58px; padding: 0 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+    .platform-logo { display: flex; align-items: center; gap: 8px; color: var(--green-950); font-size: 12px; font-weight: 800; }
+    .platform-logo i { width: 25px; height: 25px; display: grid; place-items:center; border-radius: 5px; background: var(--green-100); color: var(--green-800); font-style: normal; }
+    .platform-tag { color: var(--subtle); font-size: 7px; }
+    .profile-wrap { padding: 18px 19px; }
+    .profile-head { display: flex; align-items: flex-start; gap: 12px; }
+    .avatar-lg { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 50%; background: var(--blue-soft); color: var(--blue); font-size: 13px; font-weight: 800; }
+    .profile-head h3 { margin: 0; font-size: 14px; }
+    .profile-head p { margin: 5px 0 0; color: var(--muted); font-size: 8px; }
+    .fit { margin-left: auto; color: var(--green-800); font-size: 9px; font-weight: 800; }
+    .profile-section { margin-top: 18px; }
+    .profile-section h4 { margin: 0 0 9px; font-size: 9px; }
+    .profile-section p { margin: 0; color: #53615c; font-size: 8px; line-height: 1.8; }
+    .job { padding: 10px 0; border-top: 1px solid var(--line); }
+    .job strong { display: block; font-size: 9px; }
+    .job span { display: block; margin-top: 4px; color: var(--subtle); font-size: 7px; }
+    .analysis-side { position: absolute; inset: 0 0 0 auto; width: 310px; border-left: 1px solid #9eafa8; background: #f7f9f8; }
+    .analysis-side .ext-head { height: 53px; }
+    .analysis-side-body { padding: 12px; }
+    .analysis-heading { display: flex; align-items: flex-start; justify-content: space-between; }
+    .analysis-heading h3 { margin: 0; font-size: 13px; }
+    .analysis-heading p { margin: 4px 0 0; color: var(--muted); font-size: 7px; }
+    .score-chip { width: 49px; height: 49px; display: grid; place-items: center; border: 3px solid var(--green-100); border-top-color: var(--green-800); border-radius: 50%; color: var(--green-800); font-size: 13px; font-weight: 800; }
+    .candidate-box { margin-top: 12px; padding: 12px; border: 1px solid var(--line); background: white; }
+    .candidate-title { display: flex; align-items: center; justify-content: space-between; }
+    .candidate-title strong { font-size: 10px; }
+    .candidate-title span { color: var(--green-800); font-size: 8px; font-weight: 800; }
+    .candidate-meta { margin-top: 4px; color: var(--muted); font-size: 7px; }
+    .fact { margin-top: 10px; }
+    .fact b { display: block; color: #47544f; font-size: 7px; }
+    .fact ul { margin: 5px 0 0; padding-left: 14px; color: var(--muted); font-size: 7px; line-height: 1.65; }
+    .fact.unknown { padding: 8px; border-left: 3px solid var(--amber); background: var(--amber-soft); }
+    .fact.unknown b { color: #7a481f; }
+    .draft { margin-top: 10px; padding: 9px; background: var(--soft); }
+    .draft strong { display: block; font-size: 7px; }
+    .draft p { margin: 5px 0 0; color: #52605c; font-size: 7px; line-height: 1.6; }
+    .copy-draft { height: 28px; margin-top: 8px; display: grid; place-items: center; border: 1px solid var(--green-800); border-radius: 4px; color: var(--green-800); font-size: 7px; font-weight: 800; }
+    .no-send { position: absolute; right: 13px; bottom: 13px; left: 13px; padding: 8px; border-left: 3px solid var(--green-800); background: var(--green-100); color: var(--green-800); font-size: 7px; font-weight: 700; }
+
+    /* Screenshot 3 */
+    #shot-3 { background: #eef4f1; }
+    #shot-3 .top-story { position: absolute; top: 44px; left: 50px; right: 50px; display: flex; align-items: flex-end; justify-content: space-between; }
+    #shot-3 .top-story .copy { width: 520px; }
+    #shot-3 .top-story .headline { margin-top: 10px; font-size: 37px; }
+    #shot-3 .top-story .subhead { margin-top: 10px; font-size: 14px; }
+    #shot-3 .flow { display: flex; align-items: center; gap: 8px; }
+    #shot-3 .flow-item { width: 112px; height: 58px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: white; }
+    #shot-3 .flow-item strong, #shot-3 .flow-item span { display: block; }
+    #shot-3 .flow-item strong { font-size: 11px; }
+    #shot-3 .flow-item span { margin-top: 4px; color: var(--subtle); font-size: 7px; }
+    #shot-3 .flow-arrow { color: var(--green-800); font-size: 16px; font-weight: 900; }
+    #shot-3 .graph-window { position: absolute; left: 50px; bottom: 38px; width: 785px; height: 520px; }
+    #shot-3 .graph-window .sidebar { width: 132px; }
+    #shot-3 .graph-window .main { padding: 14px 15px; }
+    .graph-toolbar { height: 36px; padding: 5px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: white; }
+    .node-count { color: var(--subtle); font-size: 7px; }
+    .graph-canvas { position: relative; height: 340px; margin-top: 10px; overflow: hidden; border: 1px solid var(--line); background: white; }
+    .graph-labels { position: absolute; top: 17px; right: 26px; left: 26px; display: flex; justify-content: space-between; color: var(--muted); font-size: 8px; font-weight: 800; }
+    .edge { position: absolute; height: 1px; transform-origin: left center; background: #a9bbb4; opacity: .55; }
+    .node { position: absolute; display: flex; align-items: center; gap: 5px; color: #46534f; font-size: 7px; font-weight: 650; white-space: nowrap; }
+    .node i { width: 13px; height: 13px; border-radius: 50%; background: var(--green-800); box-shadow: 0 0 0 3px var(--green-100); }
+    .node.person i { background: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
+    .node.skill i { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); }
+    .graph-legend { margin-top: 10px; display: flex; gap: 14px; color: var(--muted); font-size: 7px; }
+    .graph-legend span { display: flex; align-items: center; gap: 5px; }
+    .graph-legend i { width: 7px; height: 7px; border-radius: 50%; }
+    #shot-3 .scan-panel { position: absolute; right: 50px; bottom: 38px; width: 358px; height: 520px; overflow: hidden; border: 1px solid #9cafa7; border-radius: 7px; background: #f7f9f8; box-shadow: 0 18px 48px rgba(20,38,34,.18); }
+    .scan-panel .ext-head { height: 52px; }
+    .scan-tabs { height: 34px; margin: 10px 12px; padding: 3px; display: grid; grid-template-columns: repeat(3,1fr); gap: 3px; border-radius: 4px; background: #e7ece9; }
+    .scan-tabs span { display: grid; place-items: center; color: var(--muted); font-size: 7px; font-weight: 700; }
+    .scan-tabs .active { border-radius: 3px; background: white; color: var(--green-800); }
+    .scan-body { padding: 0 13px; }
+    .scan-heading { display: flex; align-items: flex-start; justify-content: space-between; }
+    .scan-heading h3 { margin: 0; font-size: 13px; }
+    .scan-heading p { margin: 4px 0 0; color: var(--muted); font-size: 7px; }
+    .timer { color: var(--green-800); font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .scan-guide { margin-top: 11px; padding: 9px 10px; border-left: 3px solid var(--green-800); background: var(--green-100); }
+    .scan-guide strong, .scan-guide span { display: block; }
+    .scan-guide strong { font-size: 8px; }
+    .scan-guide span { margin-top: 3px; color: var(--green-800); font-size: 7px; }
+    .scan-stats { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); background: white; }
+    .scan-stats div { padding: 10px; border-right: 1px solid var(--line); }
+    .scan-stats div:last-child { border: 0; }
+    .scan-stats span, .scan-stats strong { display: block; }
+    .scan-stats span { color: var(--subtle); font-size: 7px; }
+    .scan-stats strong { margin-top: 4px; font-size: 9px; }
+    .track { height: 7px; margin-top: 12px; overflow: hidden; border-radius: 4px; background: #e3e8e5; }
+    .track i { display: block; width: 72%; height: 100%; border-radius: 4px; background: var(--green-800); }
+    .frames { height: 98px; margin-top: 12px; display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; }
+    .frame { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 4px; background: white; }
+    .frame::before { content: ""; position: absolute; top: 10px; left: 9px; width: 28px; height: 5px; background: #b9c9c3; box-shadow: 0 11px 0 #d5dedb, 0 22px 0 #d5dedb, 0 33px 0 #d5dedb, 0 44px 0 #d5dedb; }
+    .frame::after { content: ""; position: absolute; top: 10px; right: 9px; width: 15px; height: 15px; border-radius: 50%; background: var(--blue-soft); }
+    .scan-result { margin-top: 12px; padding: 10px; border: 1px solid #b7d1c8; background: white; }
+    .scan-result strong { font-size: 9px; }
+    .scan-result p { margin: 5px 0 0; color: var(--muted); font-size: 7px; line-height: 1.6; }
+    .learned { margin-top: 8px; display: flex; gap: 5px; }
+    .learned span { height: 20px; padding: 0 7px; display: flex; align-items: center; border-radius: 3px; background: var(--green-100); color: var(--green-800); font-size: 7px; font-weight: 700; }
+
+    /* Small promo */
+    #promo { background: var(--green-950); color: white; }
+    #promo::before { content: ""; position: absolute; inset: 0 0 0 auto; width: 158px; background: #203a33; border-left: 1px solid #38524b; }
+    #promo .promo-copy { position: absolute; top: 25px; left: 27px; width: 248px; }
+    #promo .brand-lockup { gap: 8px; }
+    #promo .brand-symbol { width: 32px; height: 32px; background: #d8ebe4; color: var(--green-950); }
+    #promo .brand-lockup strong { font-size: 15px; }
+    #promo .brand-lockup span { margin-top: 3px; color: #91a59f; font-size: 7px; }
+    #promo h2 { margin: 28px 0 0; font-size: 27px; line-height: 1.2; }
+    #promo p { margin: 11px 0 0; color: #aebfba; font-size: 11px; line-height: 1.6; }
+    #promo .mini-browser { position: absolute; top: 25px; right: 21px; width: 155px; height: 230px; overflow: hidden; border: 1px solid #648078; border-radius: 6px; background: #f7f9f8; box-shadow: 0 14px 35px rgba(0,0,0,.32); }
+    #promo .mini-browser .ext-head { height: 38px; padding: 0 7px; }
+    #promo .mini-browser .ext-logo { width: 20px; height: 20px; }
+    #promo .mini-browser .ext-brand strong { font-size: 7px; }
+    #promo .mini-browser .ext-brand span { font-size: 4px; }
+    #promo .mini-content { padding: 9px; }
+    #promo .mini-content h4 { margin: 0; color: var(--ink); font-size: 9px; }
+    #promo .mini-content p { margin: 3px 0 0; color: var(--subtle); font-size: 5px; }
+    #promo .mini-task { margin-top: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 4px; background: white; }
+    #promo .mini-task strong { display: block; color: var(--ink); font-size: 7px; }
+    #promo .mini-task span { display: block; margin-top: 4px; color: var(--muted); font-size: 5px; }
+    #promo .mini-query { margin-top: 7px; padding: 6px; background: var(--green-50); color: var(--green-800); font-size: 5px; font-weight: 700; }
+    #promo .mini-score { margin-top: 8px; display: flex; align-items: center; gap: 7px; padding: 8px; border: 1px solid var(--line); background: white; }
+    #promo .mini-score i { width: 24px; height: 24px; display: grid; place-items: center; border: 2px solid var(--green-100); border-top-color: var(--green-800); border-radius: 50%; color: var(--green-800); font-size: 6px; font-style: normal; font-weight: 800; }
+    #promo .mini-score strong { color: var(--ink); font-size: 6px; }
+    #promo .mini-score span { display: block; margin-top: 3px; color: var(--subtle); font-size: 5px; }
+
+    /* Store icon */
+    #icon { display: grid; place-items: center; background: transparent; }
+    #icon .icon-tile { position: relative; width: 128px; height: 128px; overflow: hidden; border-radius: 28px; background: var(--green-950); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
+    #icon .search-ring { position: absolute; top: 25px; left: 25px; width: 58px; height: 58px; border: 12px solid #ecf5f2; border-radius: 50%; }
+    #icon .search-handle { position: absolute; top: 72px; left: 72px; width: 44px; height: 12px; border-radius: 6px; background: #ecf5f2; transform: rotate(45deg); transform-origin: left center; }
+    #icon .network-node { position: absolute; top: 40px; left: 39px; width: 13px; height: 13px; border-radius: 50%; background: #6fc3aa; box-shadow: 19px 14px 0 #d7a459, 3px 27px 0 #66a8cf; }
+    #icon .network-line { position: absolute; top: 48px; left: 49px; width: 24px; height: 3px; border-radius: 2px; background: #a9d8ca; transform: rotate(36deg); }
+    #icon .network-line.two { top: 55px; left: 43px; width: 25px; transform: rotate(82deg); }
+  </style>
+</head>
+<body>
+  <section id="shot-1" class="asset shot" aria-label="从人才画像到搜索任务">
+    <div class="story">
+      <div class="brand-lockup"><div class="brand-symbol">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>
+      </div><div><strong>觅才</strong><span>AI TALENT INTELLIGENCE</span></div></div>
+      <div class="eyebrow" style="margin-top:70px">搜索任务</div>
+      <h1 class="headline">从人才画像<br>到 BOSS 搜索词</h1>
+      <p class="subhead">AI 从简历与公司图谱中生成清晰任务，HR 复制关键词即可开始人工搜索。</p>
+      <div class="proof"><div><i>✓</i>公司、职位与城市一次给全</div><div><i>✓</i>搜索理由与执行步骤可追溯</div><div><i>✓</i>结果反馈进入下一轮学习</div></div>
+    </div>
+    <div class="privacy-pill">人工执行 · 不读取 BOSS DOM 或 Cookie</div>
+    <div class="browser-window stage">
+      <div class="browser-bar"><div class="browser-dots"><i></i><i></i><i></i></div><div class="address">localhost:3000/search-tasks</div><div class="chrome-menu">⋮</div></div>
+      <div class="app">
+        <aside class="sidebar">
+          <div class="side-brand"><div class="mini-mark"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></div><div><strong>觅才</strong><span>AI TALENT INTELLIGENCE</span></div></div>
+          <div class="nav-label">工作空间</div>
+          <div class="nav"><span class="nav-icon">⌂</span>今日工作台</div><div class="nav"><span class="nav-icon">▣</span>寻访战役</div><div class="nav"><span class="nav-icon">▤</span>简历库</div><div class="nav"><span class="nav-icon">⌘</span>人才图谱</div><div class="nav active"><span class="nav-icon">☷</span>BOSS 搜索任务</div><div class="nav"><span class="nav-icon">◉</span>AI 学习中心</div><div class="nav"><span class="nav-icon">▥</span>公司发现</div><div class="nav"><span class="nav-icon">♙</span>人员发现</div>
+        </aside>
+        <div class="workspace">
+          <div class="topbar"><div><strong>BOSS 搜索任务</strong><span>海外项目负责人寻访</span></div><div class="top-actions"><div class="global-search">⌕&nbsp; 搜索人才、公司或任务</div><div class="bell">♧</div></div></div>
+          <div class="main">
+            <div class="page-title"><div><div class="kicker">AI SEARCH PLAN</div><h3>今日待执行任务</h3><p>根据昨夜新增简历与图谱变化生成</p></div><div class="page-button">↻ 生成下一批任务</div></div>
+            <div class="toolbar"><div class="search-field">⌕&nbsp; 搜索公司、职位或关键词</div><div class="select">优先级：全部</div></div>
+            <div class="task-card"><div class="task-main"><div class="priority"><div><strong>92</strong><span>优先级</span></div></div><div class="task-content"><div class="task-head"><div><h4>搜索「海外增长负责人」候选人</h4><p>目标画像：海外业务负责人 · 最近 7 份简历出现同类公司线索</p></div><div class="status">待执行</div></div><div class="tags"><span class="tag">海外增长</span><span class="tag">商业化</span><span class="tag">团队管理</span><span class="tag">广州</span></div><ol class="instructions"><li>优先选择近 3 年有海外业务增长结果的人才</li><li>出现“广告变现 / 工具出海 / 新兴市场”经历时进入详情判断</li></ol><div class="task-actions"><span class="mini-button">▣ 复制搜索词</span><span class="mini-button">↗ 打开 BOSS</span><span class="mini-button primary">记录结果</span></div></div></div></div>
+            <div class="task-card"><div class="task-main"><div class="priority" style="background:var(--amber-soft);color:var(--amber)"><div><strong>84</strong><span>优先级</span></div></div><div class="task-content"><div class="task-head"><div><h4>扩展「海外工具产品」公司池</h4><p>公司图谱新增 3 条高置信度任职关系</p></div><div class="status">待执行</div></div><div class="tags"><span class="tag">工具出海</span><span class="tag">订阅增长</span><span class="tag">深圳</span></div></div></div></div>
+          </div>
+        </div>
+      </div>
+      <aside class="extension-panel">
+        <div class="ext-head"><div class="ext-logo"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></div><div class="ext-brand"><strong>觅才寻访助手</strong><span>BOSS 人工搜索工作台</span></div><div class="connection"><i></i>已连接</div></div>
+        <div class="ext-tabs"><span class="active">任务</span><span>扫描简历</span><span>设置</span></div>
+        <div class="ext-body"><div class="ext-title"><div><h4>搜索任务</h4><p>2 个任务待执行</p></div><span style="color:var(--green-800);font-size:13px">↻</span></div>
+          <div class="ext-task"><div class="ext-task-top"><div class="ext-priority">92</div><div><h5>海外增长负责人</h5><p>优先查看具有商业化与团队管理经历的人才</p></div></div><div class="query">海外增长负责人 · 广州</div><div class="tags"><span class="tag">工具出海</span><span class="tag">商业化</span></div><div class="ext-buttons"><span>复制关键词</span><span class="open">打开 BOSS</span><span>开始执行</span><span>提交反馈</span></div></div>
+          <div class="ext-task"><div class="ext-task-top"><div class="ext-priority" style="background:var(--amber-soft);color:var(--amber)">84</div><div><h5>海外工具产品公司池</h5><p>探索相邻公司的人才供给</p></div></div><div class="query">工具出海 · 订阅增长 · 深圳</div></div>
+        </div><div class="ext-foot">人工操作 · 可追溯反馈 · 不自动发送</div>
+      </aside>
+    </div>
+  </section>
+
+  <section id="shot-2" class="asset shot" aria-label="证据化候选人判断">
+    <div class="story-dark">
+      <div class="brand-lockup"><div class="brand-symbol" style="background:#d8ebe4;color:var(--green-950)"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></div><div><strong>觅才</strong><span>AI TALENT INTELLIGENCE</span></div></div>
+      <div class="eyebrow">可见页分析</div><h1 class="headline">判断有证据<br>未知项不猜测</h1><p class="subhead">候选人评分、命中证据与未知项并列展示。招呼语只生成草稿，由 HR 审核后手动使用。</p>
+      <div class="proof"><div><i>✓</i>仅分析当前可见页面</div><div><i>✓</i>证据与推断明确分开</div><div><i>✓</i>不自动发送任何消息</div></div>
+    </div>
+    <div class="analysis-stage">
+      <div class="synthetic-page">
+        <div class="platform-head"><div class="platform-logo"><i>聘</i>合成招聘详情页</div><div class="platform-tag">仅用于产品演示 · 无真实个人数据</div></div>
+        <div class="profile-wrap">
+          <div class="profile-head"><div class="avatar-lg">候</div><div><h3>候选人 A</h3><p>海外增长负责人 · 广州 · 8 年经验</p></div><div class="fit">在线简历</div></div>
+          <div class="tags"><span class="tag">工具出海</span><span class="tag">商业化</span><span class="tag">团队管理</span></div>
+          <section class="profile-section"><h4>个人优势</h4><p>负责海外工具产品从市场验证到规模化增长，覆盖投放、订阅转化和团队搭建。曾推动新兴市场业务连续增长，并与产品、数据团队共同优化商业化路径。</p></section>
+          <section class="profile-section"><h4>工作经历</h4><div class="job"><strong>星航互动 · 海外增长负责人</strong><span>2022.04 - 至今 · 广州</span><p>负责海外市场增长策略与 12 人团队，推动多地区获客效率和付费转化提升。</p></div><div class="job"><strong>远景工具 · 增长经理</strong><span>2019.06 - 2022.03 · 深圳</span><p>负责订阅产品商业化与渠道增长，参与从 0 到 1 建立数据评估体系。</p></div></section>
+          <section class="profile-section"><h4>项目经历</h4><p>新兴市场增长计划：建立市场分层、素材迭代与预算复盘机制，协同本地化与产品团队完成阶段目标。</p></section>
+        </div>
+      </div>
+      <aside class="analysis-side">
+        <div class="ext-head"><div class="ext-logo"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></div><div class="ext-brand"><strong>觅才寻访助手</strong><span>当前可见页判断</span></div><div class="connection"><i></i>已连接</div></div>
+        <div class="analysis-side-body"><div class="analysis-heading"><div><h3>候选人判断</h3><p>仅依据截图中的可见信息</p></div><div class="score-chip">86</div></div>
+          <div class="candidate-box"><div class="candidate-title"><strong>候选人 A</strong><span>建议沟通</span></div><div class="candidate-meta">海外增长负责人 · 广州</div>
+            <div class="fact"><b>命中证据</b><ul><li>近年负责海外工具产品增长</li><li>明确具备订阅商业化经验</li><li>有 12 人团队管理信息</li></ul></div>
+            <div class="fact unknown"><b>需要核实</b><ul><li>年度收入规模未在当前页披露</li><li>英文工作能力缺少直接证据</li></ul></div>
+            <div class="draft"><strong>招呼语草稿</strong><p>你好，看到你在海外工具产品增长和商业化方面的经历，与我们正在寻找的海外项目负责人方向较为契合，想和你交流一下相关机会。</p></div><div class="copy-draft">复制草稿</div>
+          </div>
+        </div><div class="no-send">草稿不会自动发送，需由 HR 审核并手动操作</div>
+      </aside>
+    </div>
+  </section>
+
+  <section id="shot-3" class="asset shot" aria-label="简历扫描与人才图谱学习">
+    <div class="top-story"><div class="copy"><div class="eyebrow">持续学习</div><h1 class="headline">一份简历，沉淀三类可复用线索</h1><p class="subhead">任职公司、人才关系与关键技能进入图谱，驱动下一轮 BOSS 搜索任务。</p></div><div class="flow"><div class="flow-item"><strong>可见页扫描</strong><span>HR 匀速滚动简历</span></div><div class="flow-arrow">→</div><div class="flow-item"><strong>AI 结构化</strong><span>提取证据与未知项</span></div><div class="flow-arrow">→</div><div class="flow-item"><strong>图谱与任务</strong><span>更新公司及搜索词</span></div></div></div>
+    <div class="browser-window graph-window">
+      <div class="browser-bar"><div class="browser-dots"><i></i><i></i><i></i></div><div class="address">localhost:3000/graph</div><div class="chrome-menu">⋮</div></div>
+      <div class="app">
+        <aside class="sidebar"><div class="side-brand"><div class="mini-mark"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></div><div><strong>觅才</strong><span>AI TALENT INTELLIGENCE</span></div></div><div class="nav-label">工作空间</div><div class="nav">⌂ 今日工作台</div><div class="nav">▤ 简历库</div><div class="nav active">⌘ 人才图谱</div><div class="nav">☷ 搜索任务</div><div class="nav">◉ AI 学习中心</div><div class="nav">▥ 公司发现</div></aside>
+        <div class="workspace"><div class="topbar"><div><strong>公司与人才图谱</strong><span>海外项目负责人寻访</span></div><div class="top-actions"><div class="bell">♧</div></div></div><div class="main"><div class="page-title"><div><div class="kicker">TALENT GRAPH</div><h3>公司、人才与技能关系</h3><p>每条关系保留来源和可信度</p></div></div><div class="graph-toolbar"><div class="search-field">⌕&nbsp; 搜索公司、人才或技能</div><div class="node-count">12 个节点 · 18 条关系</div></div>
+          <div class="graph-canvas"><div class="graph-labels"><span>公司</span><span>人才</span><span>技能</span></div>
+            <span class="edge" style="left:110px;top:104px;width:192px;transform:rotate(8deg)"></span><span class="edge" style="left:110px;top:104px;width:194px;transform:rotate(31deg)"></span><span class="edge" style="left:110px;top:196px;width:197px;transform:rotate(-16deg)"></span><span class="edge" style="left:110px;top:196px;width:190px;transform:rotate(12deg)"></span><span class="edge" style="left:305px;top:130px;width:205px;transform:rotate(-8deg)"></span><span class="edge" style="left:305px;top:130px;width:207px;transform:rotate(17deg)"></span><span class="edge" style="left:305px;top:226px;width:205px;transform:rotate(-12deg)"></span><span class="edge" style="left:305px;top:226px;width:207px;transform:rotate(11deg)"></span>
+            <div class="node" style="left:48px;top:96px"><i></i>星航互动</div><div class="node" style="left:48px;top:188px"><i></i>远景工具</div><div class="node" style="left:48px;top:278px"><i></i>海桥科技</div>
+            <div class="node person" style="left:278px;top:121px"><i></i>候选人 A</div><div class="node person" style="left:278px;top:217px"><i></i>候选人 B</div><div class="node person" style="left:278px;top:286px"><i></i>候选人 C</div>
+            <div class="node skill" style="left:492px;top:90px"><i></i>海外增长</div><div class="node skill" style="left:492px;top:158px"><i></i>商业化</div><div class="node skill" style="left:492px;top:228px"><i></i>团队管理</div><div class="node skill" style="left:492px;top:294px"><i></i>订阅产品</div>
+          </div><div class="graph-legend"><span><i style="background:var(--green-800)"></i>公司</span><span><i style="background:var(--blue)"></i>人才</span><span><i style="background:var(--amber)"></i>技能</span><span>关系越清晰，下一批搜索任务越准确</span></div>
+        </div></div>
+      </div>
+    </div>
+    <aside class="scan-panel"><div class="ext-head"><div class="ext-logo"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></div><div class="ext-brand"><strong>觅才寻访助手</strong><span>BOSS 人工搜索工作台</span></div><div class="connection"><i></i>扫描中</div></div><div class="scan-tabs"><span>任务</span><span class="active">扫描简历</span><span>设置</span></div><div class="scan-body"><div class="scan-heading"><div><h3>扫描 BOSS 简历</h3><p>匀速滚动，系统自动选择关键帧</p></div><div class="timer">00:28</div></div><div class="scan-guide"><strong>正在采集当前简历</strong><span>已覆盖 72%，请继续滚动至底部</span></div><div class="scan-stats"><div><span>扫描状态</span><strong>采集中</strong></div><div><span>关键帧</span><strong>8 帧</strong></div></div><div class="track"><i></i></div><div class="frames"><div class="frame"></div><div class="frame"></div><div class="frame"></div><div class="frame"></div></div><div class="scan-result"><strong>识别预览</strong><p>已发现 2 段任职经历、4 项技能与 3 条公司关系。完成后进入增量学习队列。</p><div class="learned"><span>任职公司 2</span><span>技能 4</span><span>关系 3</span></div></div></div></aside>
+  </section>
+
+  <section id="promo" class="asset promo" aria-label="小宣传图">
+    <div class="promo-copy"><div class="brand-lockup"><div class="brand-symbol"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></div><div><strong>觅才</strong><span>AI TALENT INTELLIGENCE</span></div></div><h2>让 BOSS 寻访<br>从经验驱动<br>变成证据驱动</h2><p>搜索任务 · 简历扫描 · 人才图谱</p></div>
+    <div class="mini-browser"><div class="ext-head"><div class="ext-logo"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></div><div class="ext-brand"><strong>觅才寻访助手</strong><span>人工搜索工作台</span></div></div><div class="mini-content"><h4>今日搜索任务</h4><p>AI 根据人才画像生成</p><div class="mini-task"><strong>海外增长负责人</strong><span>优先级 92 · 广州</span><div class="mini-query">海外增长 · 商业化 · 团队管理</div></div><div class="mini-score"><i>86</i><div><strong>建议沟通</strong><span>3 条命中证据 · 2 项待核实</span></div></div></div></div>
+  </section>
+
+  <section id="icon" class="asset icon" aria-label="商店图标"><div class="icon-tile"><div class="search-ring"></div><div class="search-handle"></div><div class="network-line"></div><div class="network-line two"></div><div class="network-node"></div></div></section>
+  <script>
+    const selectedAsset = new URLSearchParams(location.search).get("asset");
+    if (selectedAsset) {
+      for (const asset of document.querySelectorAll(".asset")) {
+        asset.style.display = asset.id === selectedAsset ? "block" : "none";
+      }
+      document.body.style.width = `${document.getElementById(selectedAsset).offsetWidth}px`;
+      document.body.style.height = `${document.getElementById(selectedAsset).offsetHeight}px`;
+      document.body.style.overflow = "hidden";
+    }
+  </script>
+</body>
+</html>

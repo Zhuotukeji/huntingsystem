@@ -2,12 +2,13 @@ import { createHash, randomUUID } from "node:crypto";
 import { db, json, now } from "@/lib/db";
 import { analyzeResumeWithAi, type ResumeAnalysis } from "@/lib/llm";
 import { getCampaign, listCampaigns } from "@/lib/repository";
+import { preferredCandidateName, resolveResumeIdentity, type ResumeIdentityResolution } from "@/lib/resume-identity";
 import { getPendingResumeIds, getResumeText } from "@/lib/resumes";
 import type { AiRun, GraphData, LearningRecommendation, SearchTask } from "@/lib/types";
 
 type Row = Record<string, string | number | null>;
 
-const PARSE_VERSION = "resume-graph-v1";
+const PARSE_VERSION = "resume-graph-v2";
 const searchTaskLifetimeDays = 14;
 
 function normalize(value: string) {
@@ -154,17 +155,50 @@ function calculateOrganizationScore(campaignId: string, employment: ResumeAnalys
   return bounded(Math.round(55 + (signals.length ? hits / signals.length : 0) * 30 + employment.confidence * 10), 40, 95);
 }
 
+function getStoredIdentityResolution(resumeId: string): ResumeIdentityResolution | null {
+  const row = db.prepare(`SELECT rim.decision, rim.matched_person_id, rim.score, rim.confidence, rim.reasons_json, rim.candidate_count, matched.name AS matched_person_name
+    FROM resume_identity_matches rim
+    LEFT JOIN people matched ON matched.id = rim.matched_person_id
+    WHERE rim.resume_id = ?`).get(resumeId) as Row | undefined;
+  if (!row) return null;
+  return {
+    decision: String(row.decision) as ResumeIdentityResolution["decision"],
+    personId: row.matched_person_id ? String(row.matched_person_id) : null,
+    personName: row.matched_person_name ? String(row.matched_person_name) : null,
+    score: Number(row.score),
+    confidence: Number(row.confidence),
+    reasons: json(String(row.reasons_json)),
+    candidateCount: Number(row.candidate_count),
+  };
+}
+
 function persistResumeAnalysis(resumeId: string, campaignId: string, analysis: ResumeAnalysis) {
   const timestamp = now();
   const existingResume = db.prepare("SELECT person_id, file_name FROM resume_documents WHERE id = ?").get(resumeId) as { person_id: string | null; file_name: string };
-  let personId = existingResume.person_id;
-  if (!personId) {
+  const identity = existingResume.person_id
+    ? getStoredIdentityResolution(resumeId) || {
+      decision: "EXISTING_LINK" as const,
+      personId: existingResume.person_id,
+      personName: (db.prepare("SELECT name FROM people WHERE id = ?").get(existingResume.person_id) as { name: string } | undefined)?.name || null,
+      score: 100,
+      confidence: 1,
+      reasons: ["该简历已关联候选人档案，重新学习时保留现有关联"],
+      candidateCount: 1,
+    }
+    : resolveResumeIdentity(resumeId, analysis);
+  const reusablePersonId = identity.decision === "AUTO_MERGED" ? identity.personId : existingResume.person_id;
+  let personId: string;
+  if (!reusablePersonId) {
     personId = randomUUID();
     db.prepare("INSERT INTO people (id, name, normalized_name, headline, location, identity_confidence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .run(personId, analysis.person.name, normalize(analysis.person.name), analysis.person.headline, analysis.person.location, 0.86, timestamp);
+      .run(personId, analysis.person.name, normalize(analysis.person.name), analysis.person.headline, analysis.person.location, identity.confidence, timestamp);
   } else {
+    personId = reusablePersonId;
+    const existingPerson = db.prepare("SELECT name, headline, location FROM people WHERE id = ?").get(personId) as { name: string; headline: string; location: string } | undefined;
+    if (!existingPerson) throw new Error("候选人档案不存在，无法合并简历");
+    const personName = preferredCandidateName(existingPerson.name, analysis.person.name);
     db.prepare("UPDATE people SET name = ?, normalized_name = ?, headline = ?, location = ?, identity_confidence = MAX(identity_confidence, ?) WHERE id = ?")
-      .run(analysis.person.name, normalize(analysis.person.name), analysis.person.headline, analysis.person.location, 0.86, personId);
+      .run(personName, normalize(personName), analysis.person.headline.trim() || existingPerson.headline, analysis.person.location.trim() || existingPerson.location, identity.confidence, personId);
   }
   db.prepare("DELETE FROM person_skills WHERE resume_id = ?").run(resumeId);
   db.prepare("DELETE FROM graph_edges WHERE source_resume_id = ?").run(resumeId);
@@ -213,13 +247,19 @@ function persistResumeAnalysis(resumeId: string, campaignId: string, analysis: R
   }
   const evidenceCoverage = bounded(Math.round((analysis.employments.length ? 45 : 20) + Math.min(analysis.skills.length, 10) * 4), 20, 90);
   db.prepare(`INSERT INTO campaign_people (id, campaign_id, person_id, organization_id, slot, status, fit_score, evidence_coverage, identity_confidence, recommendation_reason, strengths_json, unknowns_json, risk_flags_json, owner_name, review_reason, last_interaction_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 'PENDING_REVIEW', ?, ?, 86, ?, ?, ?, '[]', '待分配', '', NULL, ?)
-    ON CONFLICT(campaign_id, person_id) DO UPDATE SET organization_id = excluded.organization_id, slot = excluded.slot, fit_score = excluded.fit_score, evidence_coverage = excluded.evidence_coverage, recommendation_reason = excluded.recommendation_reason, strengths_json = excluded.strengths_json, unknowns_json = excluded.unknowns_json, updated_at = excluded.updated_at`)
-    .run(randomUUID(), campaignId, personId, currentOrganizationId, analysis.person.headline || getCampaign(campaignId)!.roleName, Math.round(analysis.match.score), evidenceCoverage, analysis.match.rationale, JSON.stringify(analysis.match.strengths), JSON.stringify(analysis.match.gaps), timestamp);
+    VALUES (?, ?, ?, ?, ?, 'PENDING_REVIEW', ?, ?, ?, ?, ?, ?, '[]', '待分配', ?, NULL, ?)
+    ON CONFLICT(campaign_id, person_id) DO UPDATE SET organization_id = excluded.organization_id, slot = excluded.slot, fit_score = excluded.fit_score, evidence_coverage = excluded.evidence_coverage, identity_confidence = MAX(campaign_people.identity_confidence, excluded.identity_confidence), recommendation_reason = excluded.recommendation_reason, strengths_json = excluded.strengths_json, unknowns_json = excluded.unknowns_json, review_reason = CASE WHEN excluded.review_reason <> '' THEN excluded.review_reason ELSE campaign_people.review_reason END, updated_at = excluded.updated_at`)
+    .run(randomUUID(), campaignId, personId, currentOrganizationId, analysis.person.headline || getCampaign(campaignId)!.roleName, Math.round(analysis.match.score), evidenceCoverage, Math.round(identity.confidence * 100), analysis.match.rationale, JSON.stringify(analysis.match.strengths), JSON.stringify(analysis.match.gaps), identity.decision === "REVIEW_REQUIRED" ? identity.reasons[0] : "", timestamp);
   db.prepare("INSERT INTO evidence (id, entity_type, entity_id, classification, claim_text, quote, source_title, source_url, source_provider, confidence, observed_at) VALUES (?, 'PERSON', ?, 'FACT', ?, ?, ?, ?, '授权简历', ?, ?)")
     .run(randomUUID(), personId, `解析到 ${companyNames.length} 段任职经历和 ${analysis.skills.length} 项技能`, analysis.person.summary || analysis.person.headline, existingResume.file_name, `resume:${resumeId}`, 0.85, timestamp);
   db.prepare("UPDATE resume_documents SET person_id = ?, status = 'READY', parse_version = ?, error_message = '', analyzed_at = ?, updated_at = ? WHERE id = ?")
     .run(personId, PARSE_VERSION, timestamp, timestamp, resumeId);
+  db.prepare(`INSERT INTO resume_identity_matches
+    (resume_id, person_id, matched_person_id, decision, score, confidence, reasons_json, candidate_count, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(resume_id) DO UPDATE SET person_id = excluded.person_id, matched_person_id = excluded.matched_person_id, decision = excluded.decision, score = excluded.score, confidence = excluded.confidence, reasons_json = excluded.reasons_json, candidate_count = excluded.candidate_count, updated_at = excluded.updated_at`)
+    .run(resumeId, personId, identity.personId, identity.decision, identity.score, identity.confidence, JSON.stringify(identity.reasons), identity.candidateCount, timestamp, timestamp);
+  return { personId, identity };
 }
 
 function weightFor(campaignId: string, signalType: string, signalKey: string) {
@@ -265,10 +305,15 @@ export async function executeAiRun(id: string) {
     ? (db.prepare("SELECT id FROM resume_documents WHERE campaign_id = ? ORDER BY created_at").all(scope.campaignId) as Array<{ id: string }>).map((row) => row.id)
     : getPendingResumeIds(scope.campaignId || undefined, scope.resumeIds?.length ? scope.resumeIds : undefined);
   const timestamp = now();
-  const claimed = db.prepare("UPDATE ai_runs SET status = 'RUNNING', stage = 'ANALYZE_RESUMES', started_at = ?, error_message = '' WHERE id = ? AND status IN ('QUEUED','FAILED','PARTIAL_SUCCESS')").run(timestamp, id);
+  const runningMetrics = { inputResumes: resumeIds.length, processed: 0, analyzed: 0, failed: 0, identityMerged: 0, identityReviewRequired: 0, searchTasks: 0 };
+  const initialSummary = resumeIds.length ? `准备分析 ${resumeIds.length} 份简历。` : "没有待分析简历，准备根据现有图谱生成搜索任务。";
+  const claimed = db.prepare("UPDATE ai_runs SET status = 'RUNNING', stage = 'ANALYZE_RESUMES', summary = ?, metrics_json = ?, started_at = ?, error_message = '' WHERE id = ? AND status IN ('QUEUED','FAILED','PARTIAL_SUCCESS')")
+    .run(initialSummary, JSON.stringify(runningMetrics), timestamp, id);
   if (!claimed.changes) return getAiRun(id)!;
   let analyzed = 0;
   let failed = 0;
+  let identityMerged = 0;
+  let identityReviewRequired = 0;
   let tasksCreated = 0;
   const affectedCampaigns = new Set<string>();
   for (const resumeId of resumeIds) {
@@ -284,9 +329,11 @@ export async function executeAiRun(id: string) {
       const analysis = await analyzeResumeWithAi(campaign, text) || fallbackResumeAnalysis(text, resume.campaign_id);
       db.exec("BEGIN IMMEDIATE");
       try {
-        persistResumeAnalysis(resumeId, resume.campaign_id, analysis);
+        const persisted = persistResumeAnalysis(resumeId, resume.campaign_id, analysis);
+        if (persisted.identity.decision === "AUTO_MERGED") identityMerged += 1;
+        if (persisted.identity.decision === "REVIEW_REQUIRED") identityReviewRequired += 1;
         db.prepare("UPDATE ai_run_items SET status = 'SUCCEEDED', result_json = ?, completed_at = ? WHERE run_id = ? AND entity_type = 'RESUME' AND entity_id = ?")
-          .run(JSON.stringify({ person: analysis.person.name, employments: analysis.employments.length, skills: analysis.skills.length, score: analysis.match.score }), now(), id, resumeId);
+          .run(JSON.stringify({ person: analysis.person.name, personId: persisted.personId, employments: analysis.employments.length, skills: analysis.skills.length, score: analysis.match.score, identity: persisted.identity }), now(), id, resumeId);
         db.exec("COMMIT");
       } catch (error) { db.exec("ROLLBACK"); throw error; }
       analyzed += 1;
@@ -296,15 +343,20 @@ export async function executeAiRun(id: string) {
       db.prepare("UPDATE ai_run_items SET status = 'FAILED', error_message = ?, completed_at = ? WHERE run_id = ? AND entity_type = 'RESUME' AND entity_id = ?").run(message, now(), id, resumeId);
       failed += 1;
     }
+    const processed = analyzed + failed;
+    db.prepare("UPDATE ai_runs SET summary = ?, metrics_json = ? WHERE id = ?")
+      .run(`正在分析简历：${processed} / ${resumeIds.length}，成功 ${analyzed} 份，失败 ${failed} 份。`, JSON.stringify({ ...runningMetrics, processed, analyzed, failed, identityMerged, identityReviewRequired }), id);
   }
   if (scope.campaignId) affectedCampaigns.add(scope.campaignId);
   else for (const campaign of listCampaigns().filter((item) => item.status === "ACTIVE")) affectedCampaigns.add(campaign.id);
-  db.prepare("UPDATE ai_runs SET stage = 'GENERATE_SEARCH_TASKS' WHERE id = ?").run(id);
+  db.prepare("UPDATE ai_runs SET stage = 'GENERATE_SEARCH_TASKS', summary = ?, metrics_json = ? WHERE id = ?")
+    .run("简历分析已完成，正在根据图谱生成 BOSS 搜索任务。", JSON.stringify({ ...runningMetrics, processed: analyzed + failed, analyzed, failed, identityMerged, identityReviewRequired }), id);
   for (const campaignId of affectedCampaigns) tasksCreated += generateSearchTasks(campaignId, id);
   const status = failed && analyzed ? "PARTIAL_SUCCESS" : failed ? "FAILED" : "SUCCEEDED";
-  const summary = resumeIds.length ? `完成 ${analyzed} 份简历分析，失败 ${failed} 份，生成 ${tasksCreated} 个 BOSS 人工搜索任务。` : `没有待分析简历，基于现有图谱生成 ${tasksCreated} 个新搜索任务。`;
+  const identitySummary = identityMerged || identityReviewRequired ? ` 自动合并 ${identityMerged} 份至现有人选，${identityReviewRequired} 份近似档案待复核。` : "";
+  const summary = resumeIds.length ? `完成 ${analyzed} 份简历分析，失败 ${failed} 份。${identitySummary}生成 ${tasksCreated} 个 BOSS 人工搜索任务。` : `没有待分析简历，基于现有图谱生成 ${tasksCreated} 个新搜索任务。`;
   db.prepare("UPDATE ai_runs SET status = ?, stage = 'COMPLETED', summary = ?, metrics_json = ?, output_watermark = ?, completed_at = ? WHERE id = ?")
-    .run(status, summary, JSON.stringify({ inputResumes: resumeIds.length, analyzed, failed, searchTasks: tasksCreated }), now(), now(), id);
+    .run(status, summary, JSON.stringify({ inputResumes: resumeIds.length, processed: analyzed + failed, analyzed, failed, identityMerged, identityReviewRequired, searchTasks: tasksCreated }), now(), now(), id);
   return getAiRun(id)!;
 }
 

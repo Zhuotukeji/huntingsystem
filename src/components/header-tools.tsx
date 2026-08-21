@@ -6,13 +6,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowRight, Bell, BrainCircuit, BriefcaseBusiness, Building2, ClipboardList, FileText, RefreshCw, Search, Users, X } from "lucide-react";
 import type { HeaderNotification, HeaderSearchKind, HeaderSearchResult } from "@/lib/header-data";
+import type { PermissionCode } from "@/lib/access-control";
 
 const quickLinks = [
-  { href: "/campaigns", label: "寻访战役", description: "查看当前画像和目标", icon: BriefcaseBusiness },
-  { href: "/resumes", label: "简历库", description: "查找永久保留的候选人档案", icon: FileText },
-  { href: "/organizations", label: "公司发现", description: "查看简历证据支持的公司", icon: Building2 },
-  { href: "/people", label: "人员发现", description: "审核候选人与画像匹配", icon: Users },
-  { href: "/search-tasks", label: "BOSS 搜索任务", description: "执行下一轮人工搜索", icon: ClipboardList },
+  { href: "/campaigns", label: "寻访战役", description: "查看当前画像和目标", icon: BriefcaseBusiness, permission: "campaigns.view" as PermissionCode },
+  { href: "/resumes", label: "简历库", description: "查找永久保留的候选人档案", icon: FileText, permission: "resumes.view" as PermissionCode },
+  { href: "/organizations", label: "公司发现", description: "查看简历证据支持的公司", icon: Building2, permission: "organizations.view" as PermissionCode },
+  { href: "/people", label: "人员发现", description: "审核候选人与画像匹配", icon: Users, permission: "people.view" as PermissionCode },
+  { href: "/search-tasks", label: "BOSS 搜索任务", description: "执行下一轮人工搜索", icon: ClipboardList, permission: "search_tasks.view" as PermissionCode },
 ];
 
 const resultIcons: Record<HeaderSearchKind, typeof Search> = {
@@ -34,7 +35,7 @@ const notificationIcons: Record<HeaderNotification["kind"], typeof Search> = {
 type SearchStatus = "idle" | "loading" | "ready" | "error";
 type NotificationState = { count: number; items: HeaderNotification[]; loading: boolean; error: string };
 
-export function HeaderTools() {
+export function HeaderTools({ permissions }: { permissions: PermissionCode[] }) {
   const pathname = usePathname();
   const router = useRouter();
   const searchInput = useRef<HTMLInputElement>(null);
@@ -189,7 +190,7 @@ export function HeaderTools() {
         <h2 id="global-search-title" className="sr-only">全局搜索</h2>
         <div className="command-input"><Search size={19} /><input ref={searchInput} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={handleSearchKeys} aria-label="全局搜索" placeholder="输入公司、人选、简历或任务关键词" autoComplete="off" /><button className="icon-button compact" type="button" aria-label="关闭搜索" title="关闭" onClick={() => setSearchOpen(false)}><X size={17} /></button></div>
         <div className="command-results" role="listbox" aria-label="搜索结果" aria-live="polite">
-          {!query.trim() ? <><p className="command-label">快速进入</p>{quickLinks.map((item) => { const Icon = item.icon; return <button type="button" className="command-result" key={item.href} onClick={() => navigate(item.href)}><span className="command-icon"><Icon size={17} /></span><span><strong>{item.label}</strong><small>{item.description}</small></span><ArrowRight size={15} /></button>; })}</> : null}
+          {!query.trim() ? <><p className="command-label">快速进入</p>{quickLinks.filter((item) => permissions.includes(item.permission)).map((item) => { const Icon = item.icon; return <button type="button" className="command-result" key={item.href} onClick={() => navigate(item.href)}><span className="command-icon"><Icon size={17} /></span><span><strong>{item.label}</strong><small>{item.description}</small></span><ArrowRight size={15} /></button>; })}</> : null}
           {query.trim() && searchStatus === "loading" ? <div className="command-state"><RefreshCw className="spin" size={20} /><span>正在检索</span></div> : null}
           {query.trim() && searchStatus === "error" ? <div className="command-state error"><strong>搜索暂时不可用</strong><span>请稍后重试。</span></div> : null}
           {query.trim() && searchStatus === "ready" && !results.length ? <div className="command-state"><Search size={22} /><strong>没有匹配结果</strong><span>尝试公司简称、人名或职位关键词。</span></div> : null}

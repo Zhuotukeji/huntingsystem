@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { executeAiRun, getAiRun } from "@/lib/learning";
+import { authorizeApi } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await authorizeApi("learning.view");
+  if ("response" in auth) return auth.response;
   const { id } = await params;
   const run = getAiRun(id);
   if (!run) return NextResponse.json({ error: "学习任务不存在" }, { status: 404 });
@@ -12,6 +15,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 }
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await authorizeApi("learning.manage");
+  if ("response" in auth) return auth.response;
   try {
     const { id } = await params;
     if (!getAiRun(id)) return NextResponse.json({ error: "学习任务不存在" }, { status: 404 });

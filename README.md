@@ -21,12 +21,13 @@
 - Sub2API 配置页：Base URL、`gpt-5.6`、Chat Completions/Responses API、连接测试。
 - 密钥保护：API Key 和插件访问码以 AES-256-GCM 密文存入 SQLite，接口不回传明文。
 - 公司发现：AI 只从授权简历的任职经历中发现并补全公司，以列表展示人才数、职位、市场、渠道、评分和简历证据。
-- Chrome MV3 侧边栏插件 V0.5：支持 Chrome Web Store 在线安装与版本检测，并提供端口自动探测、内部登录、任务领取/执行/反馈、结果页单屏判断、简历关键帧扫描和个性化招呼语草稿。
+- Chrome MV3 侧边栏插件 V0.6：支持 Chrome Web Store 在线安装与版本检测；正式模式提供端口自动探测、内部登录、任务领取/执行/反馈、结果页单屏判断、简历关键帧扫描和招呼语草稿；商店审核模式无需后台、BOSS 账号或真实候选人数据即可离线验证核心流程。
+- 人员登录与权限管理：服务端会话、人员启停、密码重置、多角色分配、按模块配置查看/管理权限；菜单、页面和 API 同步鉴权。
 - 无 AI 降级：未配置 Sub2API 时可解析带明确字段的结构化文本，不会生成虚构公司或候选人。
 
 ## 合规边界
 
-插件没有 content script，不读取 BOSS DOM、Cookie、密码或验证码，不自动翻页、滚动、打开候选人或发送消息。HR 开始扫描后，插件只在内存中抽取当前标签页的变化关键帧；完成时最多发送 10 帧至已配置的 Sub2API，图片和视频均不落盘。招呼语仅生成草稿，由 HR 审核后手工发送。
+插件没有 content script，不读取 BOSS DOM、页面文本、Cookie、密码或验证码，也不自动翻页、滚动、打开候选人或发送消息。HR 开始扫描后，每点击一次侧边栏的“截取当前帧”，插件才会在内存中截取当前标签页的一帧；完成时最多发送 10 帧至已配置的 Sub2API，图片和视频均不落盘。招呼语仅生成草稿，由 HR 审核后手工发送。
 
 ## 本地运行
 
@@ -38,7 +39,11 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-推荐执行 `pnpm dev --port 3010` 并打开 [http://localhost:3010](http://localhost:3010)；默认的 3000 端口也受支持。首次启动只创建默认“海外项目负责人”人才画像，不创建虚构公司或人选。
+执行 `pnpm dev` 并打开 [http://localhost:3000](http://localhost:3000)。系统和 Chrome 插件统一只使用 3000 端口。首次启动只创建默认“海外项目负责人”人才画像，不创建虚构公司或人选。
+
+首次启动还会创建系统管理员。开发环境默认账号为 `admin@hunting.local`，初始密码为 `ChangeMe123!`，首次登录后必须修改。部署前应在环境变量中显式配置 `INITIAL_ADMIN_NAME`、`INITIAL_ADMIN_EMAIL` 和高强度的 `INITIAL_ADMIN_PASSWORD`；这些配置只在数据库尚无人员账号时使用。
+
+管理员可在“人员与权限”中创建人员账号、停用账号、重置临时密码、分配多个角色，以及配置每个角色的模块权限。人员角色或角色权限变化后，已有 Web 会话会立即失效并要求重新登录。
 
 启动午夜学习 Worker：
 
@@ -62,10 +67,14 @@ pnpm extension:pack
 
 1. 在设置页保存插件访问码，并按需配置 Sub2API、启用截图分析。
 2. 打开 `chrome://extensions`，启用开发者模式。
-3. 加载仓库中的 `extension/` 目录，或下载并解压 `artifacts/hunting-extension-v0.5.0.zip` 后加载。
-4. 点击扩展图标。插件会依次检测 `localhost:3010`、`localhost:3000`，登录后即可领取任务、回填反馈或扫描 BOSS 简历。
+3. 加载仓库中的 `extension/` 目录，或下载并解压 `artifacts/hunting-extension-v0.6.10.zip` 后加载。
+4. 点击扩展图标。插件会检测 `localhost:3000`，登录后即可领取任务、回填反馈或扫描 BOSS 简历。
 
 详细说明见 [extension/README.md](extension/README.md)。
+
+提交 Chrome Web Store 时，可直接使用 [docs/CHROME_WEB_STORE_REVIEW.md](docs/CHROME_WEB_STORE_REVIEW.md) 中的中英文审核步骤。
+
+隐私政策静态页面位于 [docs/privacy.html](docs/privacy.html)，可按 [GitHub Pages 发布指南](docs/GITHUB_PAGES.md) 从默认分支的 `/docs` 目录发布。
 
 ## 验证
 

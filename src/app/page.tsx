@@ -3,10 +3,12 @@ import { ArrowRight, Building2, Clock3, MessageSquareText, Target, UserCheck, Us
 import { getDashboard } from "@/lib/repository";
 import { personStatusLabels, shortDate } from "@/lib/labels";
 import { Metric, PageIntro, StatusBadge } from "@/components/ui";
+import { requirePagePermission } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  await requirePagePermission("dashboard.view");
   const data = getDashboard();
   const maxFunnel = Math.max(...data.funnel.map((item) => item.value), 1);
   const today = new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", weekday: "long", month: "long", day: "numeric" }).format(new Date());
@@ -30,7 +32,7 @@ export default function DashboardPage() {
         </section>
 
         <section className="section">
-          <div className="section-head"><div><h3>优先人选</h3><p>综合匹配、证据覆盖和身份可信度</p></div><Link className="text-link" href="/people">进入审核队列 <ArrowRight size={12} /></Link></div>
+          <div className="section-head"><div><h3>优先人选</h3><p>综合匹配、证据覆盖和身份可信度</p></div><Link className="text-link" href="/people">进入推进队列 <ArrowRight size={12} /></Link></div>
           <div className="panel">
             {data.recentPeople.map((person) => <div className="data-row" key={person.id}>
               <div className="avatar">{person.name.slice(0, 1)}</div>
@@ -44,7 +46,7 @@ export default function DashboardPage() {
 
       <div>
         <section className="section">
-          <div className="section-head"><div><h3>本周人才漏斗</h3><p>只计算高匹配人选</p></div><Target size={17} color="#65706c" /></div>
+          <div className="section-head"><div><h3>人才推进漏斗</h3><p>按当前战役状态累计</p></div><Target size={17} color="#65706c" /></div>
           <div className="panel funnel">
             {data.funnel.map((item) => <div className="funnel-row" key={item.label}><div className="funnel-label"><span>{item.label}</span><strong>{item.value}</strong></div><div className="funnel-track"><div className="funnel-fill" style={{ width: `${Math.max((item.value / maxFunnel) * 100, 2)}%`, background: item.color }} /></div></div>)}
           </div>

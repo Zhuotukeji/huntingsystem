@@ -1,15 +1,20 @@
 import { NextResponse } from "next/server";
 import { testAiConnection } from "@/lib/llm";
 import { getPublicAiSettings, hasPluginAccessCode, saveAiSettings, setPluginAccessCode } from "@/lib/settings";
+import { authorizeApi } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const auth = await authorizeApi("settings.view");
+  if ("response" in auth) return auth.response;
   return NextResponse.json({ data: { ...getPublicAiSettings(), hasPluginAccessCode: hasPluginAccessCode() } });
 }
 
 export async function PUT(request: Request) {
+  const auth = await authorizeApi("settings.manage");
+  if ("response" in auth) return auth.response;
   try {
     const input = await request.json();
     const settings = saveAiSettings({
@@ -28,6 +33,8 @@ export async function PUT(request: Request) {
 }
 
 export async function POST() {
+  const auth = await authorizeApi("settings.manage");
+  if ("response" in auth) return auth.response;
   try {
     return NextResponse.json({ data: await testAiConnection() });
   } catch (error) {

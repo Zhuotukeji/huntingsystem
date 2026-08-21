@@ -8,6 +8,8 @@ const temporaryDirectory = mkdtempSync(join(tmpdir(), "hunting-system-"));
 process.env.DATABASE_PATH = join(temporaryDirectory, "test.db");
 process.env.DEMO_MODE = "true";
 process.env.SETTINGS_ENCRYPTION_KEY = "test-only-settings-key-with-32-bytes-minimum";
+process.env.INITIAL_ADMIN_EMAIL = "admin@test.local";
+process.env.INITIAL_ADMIN_PASSWORD = "TestAdmin123!";
 
 let repository: typeof import("../src/lib/repository");
 let database: typeof import("../src/lib/db");
@@ -19,6 +21,8 @@ let resumeCapture: typeof import("../src/lib/resume-capture");
 let headerData: typeof import("../src/lib/header-data");
 let seed: typeof import("../src/lib/seed");
 let extensionDelivery: typeof import("../src/lib/extension-delivery");
+let accessControl: typeof import("../src/lib/access-control");
+let auth: typeof import("../src/lib/auth");
 
 function createTextPdf(text: string) {
   const content = `BT /F1 12 Tf 72 720 Td (${text}) Tj ET`;
@@ -53,6 +57,56 @@ before(async () => {
   headerData = await import("../src/lib/header-data");
   seed = await import("../src/lib/seed");
   extensionDelivery = await import("../src/lib/extension-delivery");
+  accessControl = await import("../src/lib/access-control");
+  auth = await import("../src/lib/auth");
+});
+
+test("initial administrator has every permission and must change the bootstrap password", () => {
+  const overview = accessControl.getAccessOverview();
+  const administrator = auth.authenticateUser("admin@test.local", "TestAdmin123!");
+  assert.ok(administrator);
+  assert.equal(administrator.mustChangePassword, true);
+  assert.equal(administrator.permissions.length, accessControl.PERMISSION_DEFINITIONS.length);
+  assert.ok(administrator.roles.length > 0);
+  assert.equal(Object.getPrototypeOf(administrator.roles[0]), Object.prototype);
+  assert.equal(overview.users.length, 1);
+  assert.ok(overview.roles.some((role) => role.code === "SYSTEM_ADMIN"));
+  assert.equal(auth.authenticateUser("admin@test.local", "wrong-password"), null);
+});
+
+test("custom roles grant permissions and permission changes revoke existing sessions", () => {
+  const role = accessControl.createAccessRole({
+    name: "战役观察员",
+    description: "只查看战役",
+    permissionCodes: ["campaigns.view"],
+  });
+  const user = accessControl.createAccessUser({
+    name: "测试观察员",
+    email: "viewer@test.local",
+    password: "ViewerPass123",
+    roleIds: [role.id],
+  });
+  const signedIn = auth.authenticateUser(user.email, "ViewerPass123");
+  assert.deepEqual(signedIn?.permissions, ["campaigns.view"]);
+  const token = auth.createWebSession(user.id);
+  assert.equal(auth.getUserBySessionToken(token)?.id, user.id);
+
+  accessControl.updateAccessRole(role.id, {
+    name: role.name,
+    description: role.description,
+    permissionCodes: ["campaigns.view", "dashboard.view"],
+  });
+  assert.equal(auth.getUserBySessionToken(token), null);
+  assert.deepEqual(auth.authenticateUser(user.email, "ViewerPass123")?.permissions.sort(), ["campaigns.view", "dashboard.view"]);
+});
+
+test("password changes and last-administrator protection are enforced", () => {
+  const administrator = accessControl.listAccessUsers().find((user) => user.email === "admin@test.local");
+  assert.ok(administrator);
+  assert.throws(() => accessControl.updateAccessUser(administrator.id, { ...administrator, status: "DISABLED", roleIds: administrator.roleIds }), /至少一名/);
+  accessControl.changeOwnPassword(administrator.id, "TestAdmin123!", "NewAdminPass456");
+  assert.equal(auth.authenticateUser(administrator.email, "TestAdmin123!"), null);
+  assert.equal(auth.authenticateUser(administrator.email, "NewAdminPass456")?.mustChangePassword, false);
 });
 
 test("initial workspace has a profile but no invented companies or people", () => {
@@ -109,6 +163,9 @@ test("resume learning builds people, companies, graph and search tasks idempoten
   const run = learning.createAiRun({ campaignId: "campaign-overseas-gm", resumeIds: [first.resume.id] });
   const completed = await learning.executeAiRun(run.id);
   assert.equal(completed.status, "SUCCEEDED");
+  assert.equal(completed.stage, "COMPLETED");
+  assert.equal(completed.metrics.inputResumes, 1);
+  assert.equal(completed.metrics.processed, 1);
   assert.ok(repository.listPeople().some((person) => person.name === "张三"));
   assert.ok(repository.listOrganizations().some((organization) => organization.name === "广州星河网络有限公司"));
   assert.ok(learning.getGraphData().metrics.evidenceBackedEdges >= 2);
@@ -123,6 +180,107 @@ test("resume learning builds people, companies, graph and search tasks idempoten
   await learning.executeAiRun(rebuild.id);
   const rebuiltEdgeCount = Number((database.db.prepare("SELECT COUNT(*) AS count FROM graph_edges WHERE source_resume_id = ?").get(first.resume.id) as { count: number }).count);
   assert.equal(rebuiltEdgeCount, edgeCount);
+});
+
+test("masked BOSS resumes merge into an existing candidate only with strong career evidence", async () => {
+  const fullResume = [
+    "姓名：赵明",
+    "职位：海外投放负责人",
+    "所在地：广州",
+    "技能：Google Ads、Meta Ads、TikTok Ads",
+    "2021-至今 | 广州拓海网络有限公司 | 海外投放负责人 | 负责欧美市场广告投放与团队管理",
+    "2018-2021 | 深圳聚量科技有限公司 | 广告优化经理 | 负责 Google 与 Meta 广告优化",
+  ].join("\n");
+  const maskedResume = [
+    "姓名：赵*",
+    "职位：海外投放负责人",
+    "所在地：广州",
+    "技能：Google Ads、Meta Ads、TikTok Ads、AppsFlyer",
+    "2021.01-至今 | 广州拓海网络有限公司 | 海外投放负责人 | 管理海外投放团队并负责欧美市场",
+    "2018.03-2021.01 | 深圳聚量科技有限公司 | 广告优化经理 | 负责 Google 与 Meta 投放优化",
+  ].join("\n");
+  const full = await resumes.importResume({ campaignId: "campaign-overseas-gm", fileName: "赵明-完整.txt", mimeType: "text/plain", sourceType: "BOSS_VISIBLE_SCREENSHOT", legalBasis: "招聘人员主动扫描 BOSS 当前可见简历", createdBy: "测试", rawText: fullResume });
+  await learning.executeAiRun(learning.createAiRun({ campaignId: "campaign-overseas-gm", resumeIds: [full.resume.id] }).id);
+  const fullPersonId = resumes.getResume(full.resume.id)?.personId;
+  assert.ok(fullPersonId);
+
+  const masked = await resumes.importResume({ campaignId: "campaign-overseas-gm", fileName: "赵星号-BOSS扫描.txt", mimeType: "text/plain", sourceType: "BOSS_VISIBLE_SCREENSHOT", legalBasis: "招聘人员主动扫描 BOSS 当前可见简历", createdBy: "测试", rawText: maskedResume });
+  const completed = await learning.executeAiRun(learning.createAiRun({ campaignId: "campaign-overseas-gm", resumeIds: [masked.resume.id] }).id);
+  const maskedProfile = resumes.listResumeProfiles().find((resume) => resume.id === masked.resume.id);
+
+  assert.equal(resumes.getResume(masked.resume.id)?.personId, fullPersonId);
+  assert.equal(maskedProfile?.identityDecision, "AUTO_MERGED");
+  assert.equal(maskedProfile?.identityMatchedPersonId, fullPersonId);
+  assert.ok(maskedProfile?.identityReasons.some((reason) => reason.includes("2 段")));
+  assert.equal((database.db.prepare("SELECT name FROM people WHERE id = ?").get(fullPersonId) as { name: string }).name, "赵明");
+  assert.equal(Number((database.db.prepare("SELECT COUNT(*) AS count FROM resume_documents WHERE person_id = ?").get(fullPersonId) as { count: number }).count), 2);
+  assert.equal(completed.metrics.identityMerged, 1);
+});
+
+test("an ambiguous masked resume stays separate and is marked for review", async () => {
+  const existingPerson = database.db.prepare("SELECT id FROM people WHERE name = '赵明'").get() as { id: string };
+  const ambiguousResume = [
+    "姓名：赵*",
+    "职位：海外投放负责人",
+    "所在地：广州",
+    "技能：Google Ads、Meta Ads、TikTok Ads",
+    "2021-至今 | 广州拓海网络有限公司 | 海外投放负责人 | 负责欧美市场广告投放与团队管理，补充新的项目描述",
+  ].join("\n");
+  const imported = await resumes.importResume({ campaignId: "campaign-overseas-gm", fileName: "赵星号-单段履历.txt", mimeType: "text/plain", sourceType: "BOSS_VISIBLE_SCREENSHOT", legalBasis: "招聘人员主动扫描 BOSS 当前可见简历", createdBy: "测试", rawText: ambiguousResume });
+  const completed = await learning.executeAiRun(learning.createAiRun({ campaignId: "campaign-overseas-gm", resumeIds: [imported.resume.id] }).id);
+  const profile = resumes.listResumeProfiles().find((resume) => resume.id === imported.resume.id);
+
+  assert.notEqual(resumes.getResume(imported.resume.id)?.personId, existingPerson.id);
+  assert.equal(profile?.identityDecision, "REVIEW_REQUIRED");
+  assert.equal(profile?.identityMatchedPersonId, existingPerson.id);
+  assert.equal(profile?.identityMatchedPersonName, "赵明");
+  assert.match(profile?.identityReasons[0] || "", /证据或分差不足未自动合并/);
+  assert.equal(completed.metrics.identityReviewRequired, 1);
+});
+
+test("candidate workflow enforces ordered stages and preserves an audit timeline", () => {
+  const candidate = repository.listPeople().find((person) => person.name === "张三");
+  assert.ok(candidate);
+  assert.equal(candidate.status, "PENDING_REVIEW");
+  assert.throws(() => repository.reviewPeople([candidate.id], "INTERVIEWING", "直接安排面试", "测试 HR"), /不能从/);
+
+  const transitions = [
+    ["READY_TO_CONTACT", "画像审核通过"],
+    ["CONTACTED", "已通过 BOSS 发送招呼"],
+    ["ENGAGED", "候选人已回应并完成有效沟通"],
+    ["SCREENING", "进入意愿和条件初筛"],
+    ["INTERVIEWING", "用人经理面试已安排"],
+    ["OFFERED", "Offer 已发出"],
+    ["HIRED", "候选人已入职"],
+  ] as const;
+  for (const [status, reason] of transitions) repository.reviewPeople([candidate.id], status, reason, "测试 HR");
+
+  const updated = repository.listPeople().find((person) => person.id === candidate.id);
+  assert.equal(updated?.status, "HIRED");
+  assert.ok(updated?.lastInteractionAt);
+  assert.equal(updated?.stageHistory.length, transitions.length);
+  assert.equal(updated?.stageHistory[0].status, "HIRED");
+  assert.equal(updated?.stageHistory[0].reason, "候选人已入职");
+  assert.equal(updated?.stageHistory[0].operatorName, "测试 HR");
+  assert.equal(repository.getDashboard().funnel.find((stage) => stage.label === "已入职")?.value, 1);
+});
+
+test("talent-pool transitions require a reason, can be reactivated, and contacted candidates can withdraw", () => {
+  const candidate = repository.listPeople().find((person) => person.name === "赵*");
+  assert.ok(candidate);
+  assert.throws(() => repository.reviewPeople([candidate.id], "TALENT_POOL", "", "测试 HR"), /必须填写原因/);
+  repository.reviewPeople([candidate.id], "TALENT_POOL", "当前岗位级别不匹配，保留后续机会", "测试 HR");
+  assert.equal(repository.listPeople().find((person) => person.id === candidate.id)?.status, "TALENT_POOL");
+  repository.reviewPeople([candidate.id], "READY_TO_CONTACT", "新战役岗位匹配，重新激活", "测试 HR");
+  const reactivated = repository.listPeople().find((person) => person.id === candidate.id);
+  assert.equal(reactivated?.status, "READY_TO_CONTACT");
+  assert.equal(reactivated?.stageHistory[0].reason, "新战役岗位匹配，重新激活");
+  repository.reviewPeople([candidate.id], "CONTACTED", "已发送首次招呼", "测试 HR");
+  assert.throws(() => repository.reviewPeople([candidate.id], "WITHDRAWN", "", "测试 HR"), /必须填写原因/);
+  repository.reviewPeople([candidate.id], "WITHDRAWN", "候选人明确表示暂不考虑机会", "测试 HR");
+  const withdrawn = repository.listPeople().find((person) => person.id === candidate.id);
+  assert.equal(withdrawn?.status, "WITHDRAWN");
+  assert.equal(withdrawn?.stageHistory[0].reason, "候选人明确表示暂不考虑机会");
 });
 
 test("header search and notifications are backed by current workspace data", () => {
@@ -196,6 +354,33 @@ test("screenshot source only accepts BOSS or the bundled synthetic page", () => 
   assert.equal(pluginAuth.screenshotSource("chrome-extension://extension-id/synthetic.html", true), "SYNTHETIC");
   assert.throws(() => pluginAuth.screenshotSource("https://example.com/candidate"), /只允许分析/);
   assert.throws(() => pluginAuth.screenshotSource("chrome-extension://extension-id/synthetic.html", false), /只允许分析/);
+});
+
+test("resume capture accepts embedded BOSS details and identified continuation screens", () => {
+  assert.equal(resumeCapture.hasUsableResumeDetailEvidence({
+    isResumeDetail: false,
+    sequence: 1,
+    candidateName: "李**",
+    expectedCandidateName: "",
+    headline: "高级广告优化师",
+    text: "工作经历\n塔思科技（广州）\n负责海外广告投放与项目团队管理",
+  }), true);
+  assert.equal(resumeCapture.hasUsableResumeDetailEvidence({
+    isResumeDetail: false,
+    sequence: 2,
+    candidateName: "",
+    expectedCandidateName: "李**",
+    headline: "",
+    text: "工作经历\n负责 Facebook、Google 和 TikTok 海外投放，持续分析广告效果并优化项目策略。",
+  }), true);
+  assert.equal(resumeCapture.hasUsableResumeDetailEvidence({
+    isResumeDetail: false,
+    sequence: 1,
+    candidateName: "",
+    expectedCandidateName: "",
+    headline: "",
+    text: "候选人搜索列表",
+  }), false);
 });
 
 test("multi-screen resume capture removes overlap and sensitive contact fields", () => {

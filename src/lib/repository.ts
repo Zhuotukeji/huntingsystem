@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { db, json, now } from "@/lib/db";
 import "@/lib/seed";
 import { getAiRuntimeConfig } from "@/lib/settings";
+import { canTransitionPersonStatus, isPersonStatus, PERSON_STATUS_LABELS, terminalReasonStatuses } from "@/lib/person-workflow";
 import type { AgentTask, Campaign, CampaignOrganization, CampaignPerson, DashboardData, Evidence, PersonStatus, ReviewStatus } from "@/lib/types";
 
 type Row = Record<string, string | number | null>;
@@ -90,20 +91,35 @@ export function reviewOrganizations(ids: string[], status: ReviewStatus, reason 
 export function listPeople(campaignId?: string): CampaignPerson[] {
   const where = campaignId ? "WHERE cp.campaign_id = ?" : "";
   const rows = db.prepare(`SELECT cp.*, p.name, p.headline, p.location, o.name AS organization_name FROM campaign_people cp JOIN people p ON p.id = cp.person_id JOIN organizations o ON o.id = cp.organization_id ${where} ORDER BY cp.fit_score DESC, cp.updated_at DESC`).all(...(campaignId ? [campaignId] : [])) as Row[];
-  return rows.map((row) => ({
-    id: String(row.id), campaignId: String(row.campaign_id), personId: String(row.person_id), name: String(row.name), headline: String(row.headline), location: String(row.location), organizationName: String(row.organization_name), slot: String(row.slot), status: row.status as PersonStatus, fitScore: Number(row.fit_score), evidenceCoverage: Number(row.evidence_coverage), identityConfidence: Number(row.identity_confidence), recommendationReason: String(row.recommendation_reason), strengths: json(String(row.strengths_json)), unknowns: json(String(row.unknowns_json)), riskFlags: json(String(row.risk_flags_json)), ownerName: String(row.owner_name), lastInteractionAt: row.last_interaction_at ? String(row.last_interaction_at) : null, updatedAt: String(row.updated_at), evidence: evidenceFor("PERSON", String(row.person_id)),
-  }));
+  return rows.map((row) => {
+    const history = db.prepare(`SELECT id, action, reason_code, note, operator_name, created_at
+      FROM feedback WHERE campaign_id = ? AND entity_type = 'PERSON' AND entity_id = ?
+      ORDER BY created_at DESC LIMIT 50`).all(String(row.campaign_id), String(row.person_id)) as Row[];
+    return {
+      id: String(row.id), campaignId: String(row.campaign_id), personId: String(row.person_id), name: String(row.name), headline: String(row.headline), location: String(row.location), organizationName: String(row.organization_name), slot: String(row.slot), status: row.status as PersonStatus, fitScore: Number(row.fit_score), evidenceCoverage: Number(row.evidence_coverage), identityConfidence: Number(row.identity_confidence), recommendationReason: String(row.recommendation_reason), strengths: json(String(row.strengths_json)), unknowns: json(String(row.unknowns_json)), riskFlags: json(String(row.risk_flags_json)), ownerName: String(row.owner_name), reviewReason: String(row.review_reason), lastInteractionAt: row.last_interaction_at ? String(row.last_interaction_at) : null, updatedAt: String(row.updated_at), evidence: evidenceFor("PERSON", String(row.person_id)),
+      stageHistory: history.map((event) => ({ id: String(event.id), status: String(event.action), reason: String(event.note || (event.reason_code === "WORKFLOW_TRANSITION" ? "" : event.reason_code) || ""), operatorName: String(event.operator_name), createdAt: String(event.created_at) })),
+    };
+  });
 }
 
-export function reviewPeople(ids: string[], status: PersonStatus, reason = "") {
+export function reviewPeople(ids: string[], status: PersonStatus, reason = "", operatorName = "当前用户") {
+  if (!isPersonStatus(status)) throw new Error("候选人状态无效");
+  if (terminalReasonStatuses.has(status) && !reason.trim()) throw new Error(`转入“${PERSON_STATUS_LABELS[status]}”时必须填写原因`);
   const timestamp = now();
-  const update = db.prepare("UPDATE campaign_people SET status = ?, review_reason = ?, last_interaction_at = CASE WHEN ? IN ('CONTACTED','ENGAGED','CONVERTED') THEN ? ELSE last_interaction_at END, updated_at = ? WHERE id = ?");
+  const update = db.prepare("UPDATE campaign_people SET status = ?, review_reason = ?, last_interaction_at = CASE WHEN ? IN ('CONTACTED','ENGAGED','SCREENING','CONVERTED','INTERVIEWING','OFFERED','HIRED') THEN ? ELSE last_interaction_at END, updated_at = ? WHERE id = ?");
   db.exec("BEGIN IMMEDIATE");
   try {
     for (const id of ids) {
+      const row = db.prepare("SELECT campaign_id, person_id, status FROM campaign_people WHERE id = ?").get(id) as Row | undefined;
+      if (!row) throw new Error("候选人记录不存在");
+      const currentStatus = String(row.status);
+      if (!isPersonStatus(currentStatus)) throw new Error(`候选人当前状态 ${currentStatus} 无法识别`);
+      if (currentStatus === status) continue;
+      if (!canTransitionPersonStatus(currentStatus, status)) throw new Error(`不能从“${PERSON_STATUS_LABELS[currentStatus]}”直接变更为“${PERSON_STATUS_LABELS[status]}”`);
       update.run(status, reason, status, timestamp, timestamp, id);
-      const row = db.prepare("SELECT campaign_id, person_id FROM campaign_people WHERE id = ?").get(id) as Row;
-      db.prepare("INSERT INTO feedback VALUES (?, ?, 'PERSON', ?, ?, ?, '', '当前用户', ?)").run(randomUUID(), row.campaign_id, row.person_id, status, reason, timestamp);
+      db.prepare(`INSERT INTO feedback (id, campaign_id, entity_type, entity_id, action, reason_code, note, operator_name, created_at)
+        VALUES (?, ?, 'PERSON', ?, ?, 'WORKFLOW_TRANSITION', ?, ?, ?)`)
+        .run(randomUUID(), row.campaign_id, row.person_id, status, reason.trim(), operatorName, timestamp);
     }
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
@@ -152,7 +168,7 @@ export function getDashboard(): DashboardData {
     personCount: Number((db.prepare("SELECT COUNT(*) AS count FROM campaign_people WHERE campaign_id = ?").get(campaign.id) as Row).count),
   }));
   const count = (sql: string) => Number((db.prepare(sql).get() as Row).count);
-  const highMatchEngaged = count("SELECT COUNT(*) AS count FROM campaign_people WHERE status IN ('ENGAGED','CONVERTED') AND fit_score >= 80");
+  const highMatchEngaged = count("SELECT COUNT(*) AS count FROM campaign_people WHERE status IN ('ENGAGED','SCREENING','CONVERTED','INTERVIEWING','OFFERED','HIRED') AND fit_score >= 80");
   return {
     metrics: {
       pendingCompanies: count("SELECT COUNT(*) AS count FROM campaign_organizations WHERE status = 'PENDING_REVIEW'"),
@@ -167,9 +183,12 @@ export function getDashboard(): DashboardData {
     recentPeople: listPeople().slice(0, 4),
     funnel: [
       { label: "已发现", value: count("SELECT COUNT(*) AS count FROM campaign_people"), color: "#265e56" },
-      { label: "待联系", value: count("SELECT COUNT(*) AS count FROM campaign_people WHERE status IN ('READY_TO_CONTACT','CONTACTED','ENGAGED','CONVERTED')"), color: "#bc6b32" },
-      { label: "已联系", value: count("SELECT COUNT(*) AS count FROM campaign_people WHERE status IN ('CONTACTED','ENGAGED','CONVERTED')"), color: "#3e6f9e" },
-      { label: "高匹配沟通", value: highMatchEngaged, color: "#6d5c8e" },
+      { label: "进入触达", value: count("SELECT COUNT(*) AS count FROM campaign_people WHERE status IN ('READY_TO_CONTACT','CONTACTED','ENGAGED','SCREENING','CONVERTED','INTERVIEWING','OFFERED','HIRED')"), color: "#bc6b32" },
+      { label: "已联系", value: count("SELECT COUNT(*) AS count FROM campaign_people WHERE status IN ('CONTACTED','ENGAGED','SCREENING','CONVERTED','INTERVIEWING','OFFERED','HIRED')"), color: "#3e6f9e" },
+      { label: "有效沟通", value: count("SELECT COUNT(*) AS count FROM campaign_people WHERE status IN ('ENGAGED','SCREENING','CONVERTED','INTERVIEWING','OFFERED','HIRED')"), color: "#6d5c8e" },
+      { label: "进入面试", value: count("SELECT COUNT(*) AS count FROM campaign_people WHERE status IN ('INTERVIEWING','OFFERED','HIRED')"), color: "#5b7f73" },
+      { label: "Offer", value: count("SELECT COUNT(*) AS count FROM campaign_people WHERE status IN ('OFFERED','HIRED')"), color: "#ad7a32" },
+      { label: "已入职", value: count("SELECT COUNT(*) AS count FROM campaign_people WHERE status = 'HIRED'"), color: "#347557" },
     ],
   };
 }

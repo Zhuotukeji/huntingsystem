@@ -194,6 +194,19 @@ export function initializeDatabase() {
       UNIQUE(campaign_id, content_hash)
     );
 
+    CREATE TABLE IF NOT EXISTS resume_identity_matches (
+      resume_id TEXT PRIMARY KEY REFERENCES resume_documents(id) ON DELETE CASCADE,
+      person_id TEXT REFERENCES people(id) ON DELETE SET NULL,
+      matched_person_id TEXT REFERENCES people(id) ON DELETE SET NULL,
+      decision TEXT NOT NULL,
+      score REAL NOT NULL,
+      confidence REAL NOT NULL,
+      reasons_json TEXT NOT NULL,
+      candidate_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS employments (
       id TEXT PRIMARY KEY,
       person_id TEXT NOT NULL REFERENCES people(id) ON DELETE CASCADE,
@@ -365,11 +378,63 @@ export function initializeDatabase() {
       created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      password_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'ACTIVE',
+      must_change_password INTEGER NOT NULL DEFAULT 0,
+      last_login_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS roles (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      code TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      description TEXT NOT NULL DEFAULT '',
+      is_system INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS permissions (
+      code TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      group_name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS user_roles (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+      PRIMARY KEY (user_id, role_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS role_permissions (
+      role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+      permission_code TEXT NOT NULL REFERENCES permissions(code) ON DELETE CASCADE,
+      PRIMARY KEY (role_id, permission_code)
+    );
+
+    CREATE TABLE IF NOT EXISTS web_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_campaign_org_status ON campaign_organizations(campaign_id, status);
     CREATE INDEX IF NOT EXISTS idx_campaign_person_status ON campaign_people(campaign_id, status);
     CREATE INDEX IF NOT EXISTS idx_evidence_entity ON evidence(entity_type, entity_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, created_at);
     CREATE INDEX IF NOT EXISTS idx_resumes_status ON resume_documents(status, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_resume_identity_person ON resume_identity_matches(person_id, decision);
     CREATE INDEX IF NOT EXISTS idx_employments_person ON employments(person_id, start_date);
     CREATE INDEX IF NOT EXISTS idx_employments_org ON employments(organization_id, is_current);
     CREATE INDEX IF NOT EXISTS idx_graph_from ON graph_edges(from_type, from_id, edge_type);
@@ -378,6 +443,8 @@ export function initializeDatabase() {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_nightly_run_unique ON ai_runs(run_type, business_date) WHERE run_type = 'NIGHTLY' AND business_date IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_search_tasks_status ON search_tasks(status, priority DESC, created_at);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_search_feedback_task ON search_task_feedback(task_id);
+    CREATE INDEX IF NOT EXISTS idx_users_status ON users(status, email);
+    CREATE INDEX IF NOT EXISTS idx_web_sessions_user ON web_sessions(user_id, expires_at);
   `);
   db.exec("UPDATE resume_documents SET retention_until = NULL WHERE retention_until IS NOT NULL");
 }

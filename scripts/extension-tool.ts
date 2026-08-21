@@ -6,7 +6,7 @@ import vm from "node:vm";
 const root = process.cwd();
 const extensionDirectory = join(root, "extension");
 const artifactDirectory = join(root, "artifacts");
-const expectedVersion = "0.5.0";
+const expectedVersion = "0.6.10";
 const artifactName = `hunting-extension-v${expectedVersion}.zip`;
 
 function crc32(buffer: Buffer) {
@@ -52,14 +52,31 @@ function check() {
     assert(data.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex")), `icon${size}.png is not a PNG`);
     assert(data.readUInt32BE(16) === size && data.readUInt32BE(20) === size, `icon${size}.png dimensions are invalid`);
   }
-  for (const required of ["background.js", "sidepanel.html", "sidepanel.css", "capture.css", "scan-utils.js", "sidepanel.js", "synthetic.html", "synthetic.css", "README.md"]) assert(existsSync(join(extensionDirectory, required)), `${required} is missing`);
+  for (const required of ["background.js", "sidepanel.html", "sidepanel.css", "capture.css", "scan-utils.js", "review-mode.js", "sidepanel.js", "synthetic.html", "synthetic.css", "README.md"]) assert(existsSync(join(extensionDirectory, required)), `${required} is missing`);
   for (const script of files(extensionDirectory).filter((path) => path.endsWith(".js"))) new vm.Script(readFileSync(script, "utf8"), { filename: relative(root, script) });
   const source = readFileSync(join(extensionDirectory, "sidepanel.js"), "utf8");
   const backgroundSource = readFileSync(join(extensionDirectory, "background.js"), "utf8");
   assert(backgroundSource.includes("onMessageExternal") && backgroundSource.includes("HUNTING_EXTENSION_PING"), "installation status handshake is missing");
   for (const prohibited of ["chrome.cookies", "chrome.scripting", "executeScript", "chrome.webRequest", "document.cookie"]) assert(!source.includes(prohibited), `prohibited API reference found: ${prohibited}`);
   assert(source.includes("captureVisibleTab") && source.includes("window.confirm"), "visible screenshot confirmation flow is missing");
-  assert(source.includes("chrome.tabCapture.capture") && source.includes("captureVisibleTab"), "tab stream and compatible screenshot scan modes are required");
+  assert(source.includes("chrome.tabCapture.getMediaStreamId") && source.includes("targetTabId: tabId"), "resume scan must request a stream for the selected tab id");
+  assert(source.includes("navigator.mediaDevices.getUserMedia") && source.includes('chromeMediaSource: "tab"') && source.includes('chromeMediaSourceId: streamId'), "target tab stream constraints are missing");
+  assert(source.includes('scanner.mode = "target-tab"'), "target tab capture mode is missing");
+  assert(!source.includes("getDisplayMedia"), "ambiguous screen sharing must not be used");
+  const startScanSource = source.slice(source.indexOf("async function startResumeScan"), source.indexOf("async function processReviewScanFrames"));
+  assert(startScanSource.includes("startTargetTabCapture") && !startScanSource.includes("captureVisibleTab"), "resume scan must only use the targeted tab stream");
+  for (const removed of ["captureVisibleTabFrame", "tab-share", "visible-tab", "scan-video", '"<all_urls>"']) assert(!source.includes(removed), `prohibited capture path or broad permission is still present: ${removed}`);
+  const sidepanelHtml = readFileSync(join(extensionDirectory, "sidepanel.html"), "utf8");
+  assert(sidepanelHtml.includes("scan-preview-image") && sidepanelHtml.includes("scan-preview-thumbnails"), "in-memory frame gallery is missing");
+  assert(source.includes("selectScannerPreview") && source.includes("processingFrames"), "frame gallery selection or processing state is missing");
+  assert(sidepanelHtml.includes('id="scan-capture"') && source.includes("captureCurrentFrame"), "explicit frame capture button is missing");
+  for (const removed of ["HUNTING_SCAN_ENTER", "HUNTING_SCAN_KEY_ENABLE", "handleScanKeydown", "startScanKeyBridge"]) assert(!source.includes(removed), `keyboard capture bridge is still present: ${removed}`);
+  assert(source.includes("取景预览 · 尚未计入帧") && source.includes("setupPreview"), "uncounted setup preview is missing");
+  assert(!source.includes("SCAN_INTERVAL_MS") && !source.includes("sampleTimer"), "periodic resume screenshots must be disabled");
+  const finishSource = source.slice(source.indexOf("async function finishResumeScan"), source.indexOf("async function retryScanRecognition"));
+  assert(!finishSource.includes("captureScanFrame("), "finishing a scan must not capture an extra frame");
+  assert(source.includes("所有关键帧均未识别"), "resume scan must skip invalid leading frames");
+  assert(!source.includes("首帧识别失败"), "one invalid leading frame must not abort the entire resume scan");
   const scanUtilsSource = readFileSync(join(extensionDirectory, "scan-utils.js"), "utf8");
   const scanContext: { HuntingScanUtils?: { fingerprintDifference: (left: number[], right: number[]) => number; selectKeyframes: <T>(frames: T[], maximum: number) => T[] } } = {};
   vm.runInNewContext(scanUtilsSource, scanContext, { filename: "extension/scan-utils.js" });
@@ -69,12 +86,23 @@ function check() {
   const selectedFrames = scanUtils.selectKeyframes(sampleFrames, 10);
   assert(selectedFrames.length === 10 && selectedFrames[0] === 0 && selectedFrames.at(-1) === 24, "keyframe selection must preserve the first and last frames");
   assert(scanUtils.fingerprintDifference([10, 20], [10, 20]) === 0 && scanUtils.fingerprintDifference([10, 20], [20, 40]) === 15, "fingerprint difference is invalid");
+  const reviewModeSource = readFileSync(join(extensionDirectory, "review-mode.js"), "utf8");
+  const reviewContext: { HuntingReviewMode?: { createCampaigns: () => Array<{ id: string }>; createTasks: () => Array<{ id: string; status: string }>; analyzeVisibleScreenshot: (value: string) => { candidates: Array<{ alias: string }>; note: string }; greetingDraft: () => string; scanResult: (count: number) => { frameCount: number } } } = {};
+  vm.runInNewContext(reviewModeSource, reviewContext, { filename: "extension/review-mode.js" });
+  const reviewMode = reviewContext.HuntingReviewMode;
+  assert(reviewMode && reviewMode.createCampaigns().length === 1 && reviewMode.createTasks().length >= 2, "review mode fixtures are incomplete");
+  assert(reviewMode.createTasks().every((task) => task.status === "NEW"), "review mode tasks must reset safely");
+  assert(reviewMode.analyzeVisibleScreenshot("data:image/jpeg;base64,synthetic").candidates[0]?.alias.includes("合成"), "review mode screenshot result must be synthetic");
+  assert(reviewMode.greetingDraft().includes("合成草稿") && reviewMode.scanResult(7).frameCount === 7, "review mode greeting or scan result is invalid");
+  assert(!reviewModeSource.includes("fetch(") && !reviewModeSource.includes("chrome."), "review fixtures must not access network or Chrome data");
+  assert(source.includes("enterReviewMode") && source.includes("processReviewScanFrames") && source.includes("商店审核模式只允许使用插件内置的合成演示页"), "offline store review flow is incomplete");
+  assert(source.includes("reviewFixtures.analyzeVisibleScreenshot") && source.includes("reviewFixtures.greetingDraft"), "review screenshot and greeting branches are missing");
   assert(source.includes("SCAN_MAX_DURATION_MS = 60_000"), "scan duration limit is missing");
   assert(!source.includes("MediaRecorder"), "resume scans must not create video files");
   for (const removed of ["resume-file", "uploadResume", "/api/plugin/resumes"]) assert(!source.includes(removed), `removed resume import flow is still present: ${removed}`);
   for (const removed of ["capture-screen", "undo-capture", "finalize-capture"]) assert(!source.includes(removed), `manual multi-screen control is still present: ${removed}`);
   assert(source.includes("/api/plugin/resume-capture/segment") && source.includes("/api/plugin/resume-capture/finalize"), "multi-screen resume capture flow is incomplete");
-  assert(source.includes("localhost:3010") && source.includes("localhost:3000"), "backend auto-discovery ports are missing");
+  assert(source.includes('const DEFAULT_BACKENDS = ["http://localhost:3000"]'), "backend must only connect to localhost:3000");
   assert(source.includes("result.data.version === chrome.runtime.getManifest().version"), "backend compatibility check is missing");
   console.log(`Extension check passed: MV3 v${expectedVersion}, ${files(extensionDirectory).length} files`);
 }
