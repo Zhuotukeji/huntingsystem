@@ -1,0 +1,20 @@
+@media (min-width: 520px) {
+  body {
+    width: 420px;
+    min-height: 100vh;
+    margin: 0 auto;
+    box-shadow: 0 0 30px #10231d18;
+  }
+
+  footer {
+    right: auto;
+    left: 50%;
+    width: 420px;
+    transform: translateX(-50%);
+  }
+
+  #toast {
+    right: calc(50% - 198px);
+    left: calc(50% - 198px);
+  }
+}

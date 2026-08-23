@@ -18,7 +18,15 @@ export async function POST(request: Request) {
     if (!Array.isArray(input.segments)) throw new Error("没有可合并的截图");
     const segments = input.segments as CapturedResumeSegment[];
     segments.forEach((segment) => screenshotSource(String(segment.pageUrl || ""), segment.synthetic === true));
-    const data = await finalizeResumeCapture({ campaignId, legalBasis, createdBy: actor.email, segments });
+    const data = await finalizeResumeCapture({
+      campaignId,
+      legalBasis,
+      createdBy: actor.email,
+      segments,
+      searchTaskId: input.searchTaskId ? String(input.searchTaskId) : null,
+      strategyVersionId: input.strategyVersionId ? String(input.strategyVersionId) : null,
+      experimentAssignmentId: input.experimentAssignmentId ? String(input.experimentAssignmentId) : null,
+    });
     return NextResponse.json({ data }, { status: data.duplicate ? 200 : 201, headers: { ...pluginCorsHeaders, "Cache-Control": "no-store" } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "简历入库失败" }, { status: pluginErrorStatus(error), headers: pluginCorsHeaders });

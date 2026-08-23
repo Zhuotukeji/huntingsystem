@@ -1,6 +1,6 @@
 (function installReviewBrowserMock(target) {
-  const storage = { local: {}, session: {} };
   const syntheticUrl = "http://127.0.0.1:4186/extension/synthetic.html";
+  const storage = { local: {}, session: { sourceWindowId: 7, sourceTabId: 101, sourceTabUrl: syntheticUrl } };
   const screenshotCanvas = target.document.createElement("canvas"); screenshotCanvas.width = 640; screenshotCanvas.height = 400;
   const screenshotContext = screenshotCanvas.getContext("2d");
   function screenshotFrame(index) {
@@ -10,7 +10,8 @@
     return screenshotCanvas.toDataURL("image/png");
   }
   screenshotFrame(0);
-  const metrics = { createdTabs: [], captures: 0, targetTabIds: [], mediaSourceIds: [], copiedText: "" };
+  const metrics = { createdTabs: [], tabQueries: [], captures: 0, targetTabIds: [], mediaSourceIds: [], copiedText: "" };
+  const runtimeMessageListeners = [];
 
   function area(name) {
     return {
@@ -28,12 +29,13 @@
   target.chrome = {
     runtime: {
       lastError: null,
-      getManifest: () => ({ version: "0.6.10" }),
+      getManifest: () => ({ version: "0.7.2" }),
       getURL: (path) => `http://127.0.0.1:4186/extension/${path}`,
+      onMessage: { addListener(listener) { runtimeMessageListeners.push(listener); } },
     },
     storage: { local: area("local"), session: area("session") },
     tabs: {
-      async query() { return [{ id: 101, windowId: 7, url: syntheticUrl }]; },
+      async query(options) { metrics.tabQueries.push(options); return [{ id: 101, windowId: 7, url: syntheticUrl }]; },
       async create({ url }) { metrics.createdTabs.push(url); return { id: 102, windowId: 7, url }; },
       async captureVisibleTab() { metrics.captures += 1; return screenshotFrame(metrics.captures); },
     },

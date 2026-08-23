@@ -1,10 +1,32 @@
+name: huntingsystem
+
 services:
+  postgres:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-hunting}
+      POSTGRES_USER: ${POSTGRES_USER:-hunting}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-before-production}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
   web:
     build: .
     ports:
       - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
-      DATABASE_PATH: /app/data/hunting.db
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hunting}:${POSTGRES_PASSWORD:-change-me-before-production}@postgres:5432/${POSTGRES_DB:-hunting}
       DEMO_MODE: "true"
       SUB2API_BASE_URL: ${SUB2API_BASE_URL:-}
       SUB2API_API_KEY: ${SUB2API_API_KEY:-}
@@ -12,15 +34,18 @@ services:
       SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-local-docker-key-change-in-production}
       PLUGIN_ACCESS_CODE: ${PLUGIN_ACCESS_CODE:-}
     volumes:
-      - hunting-data:/app/data
+      - hunting-files:/app/.data
     restart: unless-stopped
 
   worker:
     build:
       context: .
       target: worker
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
-      DATABASE_PATH: /app/data/hunting.db
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hunting}:${POSTGRES_PASSWORD:-change-me-before-production}@postgres:5432/${POSTGRES_DB:-hunting}
       DEMO_MODE: "true"
       SUB2API_BASE_URL: ${SUB2API_BASE_URL:-}
       SUB2API_API_KEY: ${SUB2API_API_KEY:-}
@@ -28,8 +53,24 @@ services:
       SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-local-docker-key-change-in-production}
       PLUGIN_ACCESS_CODE: ${PLUGIN_ACCESS_CODE:-}
     volumes:
-      - hunting-data:/app/data
+      - hunting-files:/app/.data
     restart: unless-stopped
 
+  migrate:
+    build:
+      context: .
+      target: worker
+    profiles: ["tools"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hunting}:${POSTGRES_PASSWORD:-change-me-before-production}@postgres:5432/${POSTGRES_DB:-hunting}
+    command: ["pnpm", "db:migrate:postgres", "--", "--source", "/app/legacy/hunting.db", "--backup-dir", "/app/legacy/backups"]
+    volumes:
+      - hunting-data:/app/legacy
+
 volumes:
+  postgres-data:
+  hunting-files:
   hunting-data:

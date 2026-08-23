@@ -4,7 +4,8 @@ import { db, json, now } from "@/lib/db";
 import "@/lib/seed";
 import { getAiRuntimeConfig } from "@/lib/settings";
 import { canTransitionPersonStatus, isPersonStatus, PERSON_STATUS_LABELS, terminalReasonStatuses } from "@/lib/person-workflow";
-import type { AgentTask, Campaign, CampaignOrganization, CampaignPerson, DashboardData, Evidence, PersonStatus, ReviewStatus } from "@/lib/types";
+import { listActivityEvents, listCandidateOrigins, recordActivityEvent } from "@/lib/autonomy";
+import type { AgentTask, Campaign, CampaignOrganization, CampaignPerson, DashboardData, Evidence, OrganizationStatus, PersonStatus } from "@/lib/types";
 
 type Row = Record<string, string | number | null>;
 
@@ -56,24 +57,31 @@ export function updateCampaignStatus(id: string, status: Campaign["status"]) {
 
 export function listOrganizations(campaignId?: string): CampaignOrganization[] {
   const campaignClause = campaignId ? "AND co.campaign_id = ?" : "";
-  const rows = db.prepare(`SELECT co.*, o.name, o.domain, o.location, o.size
+  const rows = db.prepare(`SELECT co.*, o.name, o.domain, o.location, o.size, o.description
     FROM campaign_organizations co JOIN organizations o ON o.id = co.organization_id
     WHERE EXISTS (
       SELECT 1 FROM employments e JOIN resume_documents r ON r.id = e.resume_id
-      WHERE e.organization_id = co.organization_id AND r.campaign_id = co.campaign_id
+      WHERE e.organization_id = co.organization_id AND r.campaign_id = co.campaign_id AND r.graph_eligible = 1
     ) ${campaignClause}
     ORDER BY co.fit_score DESC, co.updated_at DESC`).all(...(campaignId ? [campaignId] : [])) as Row[];
   return rows.map((row) => {
-    const employments = db.prepare("SELECT DISTINCT e.person_id, e.raw_title FROM employments e JOIN resume_documents r ON r.id = e.resume_id WHERE e.organization_id = ? AND r.campaign_id = ? ORDER BY e.is_current DESC, e.sequence").all(String(row.organization_id), String(row.campaign_id)) as Array<{ person_id: string; raw_title: string }>;
+    const employments = db.prepare(`SELECT e.person_id, e.raw_title
+      FROM employments e JOIN resume_documents r ON r.id = e.resume_id
+      WHERE e.organization_id = ? AND r.campaign_id = ? AND r.graph_eligible = 1
+      GROUP BY e.person_id, e.raw_title
+      ORDER BY MAX(e.is_current) DESC, MIN(e.sequence)`).all(String(row.organization_id), String(row.campaign_id)) as Array<{ person_id: string; raw_title: string }>;
     return ({
-    id: String(row.id), campaignId: String(row.campaign_id), organizationId: String(row.organization_id), name: String(row.name), domain: String(row.domain), location: String(row.location), size: String(row.size), category: String(row.category), status: row.status as ReviewStatus,
-    products: json(String(row.products_json)), markets: json(String(row.markets_json)), channels: json(String(row.channels_json)), monetization: json(String(row.monetization_json)), fitScore: Number(row.fit_score), evidenceCoverage: Number(row.evidence_coverage), confidence: Number(row.confidence), recommendationReason: String(row.recommendation_reason), unknowns: json(String(row.unknowns_json)), ownerName: String(row.owner_name), updatedAt: String(row.updated_at), evidence: evidenceFor("ORGANIZATION", String(row.organization_id), "授权简历"),
+    id: String(row.id), campaignId: String(row.campaign_id), organizationId: String(row.organization_id), name: String(row.name), domain: String(row.domain), location: String(row.location), size: String(row.size), description: String(row.description), category: String(row.category), status: row.status as OrganizationStatus,
+    products: json(String(row.products_json)), markets: json(String(row.markets_json)), channels: json(String(row.channels_json)), monetization: json(String(row.monetization_json)),
+    businessHistory: json(String(row.business_history_json)), currentBusiness: json(String(row.current_business_json)), businessStatus: row.business_status as CampaignOrganization["businessStatus"], businessStatusSummary: String(row.business_status_summary), businessSignals: json(String(row.business_signals_json)), businessStatusConfidence: Number(row.business_status_confidence),
+    fitScore: Number(row.fit_score), evidenceCoverage: Number(row.evidence_coverage), confidence: Number(row.confidence), evidenceSourceCount: Number(row.evidence_source_count || 0), sourceQualityScore: Number(row.source_quality_score || 0), recommendationReason: String(row.recommendation_reason), unknowns: json(String(row.unknowns_json)), ownerName: String(row.owner_name), updatedAt: String(row.updated_at), evidence: evidenceFor("ORGANIZATION", String(row.organization_id), "授权简历"),
     talentCount: new Set(employments.map((item) => item.person_id)).size,
     roleNames: [...new Set(employments.map((item) => item.raw_title).filter(Boolean))].slice(0, 8),
   }); });
 }
 
-export function reviewOrganizations(ids: string[], status: ReviewStatus, reason = "") {
+export function updateOrganizationStatus(ids: string[], status: OrganizationStatus, reason = "") {
+  if (!["AI_LEARNED", "WATCHLIST", "REJECTED"].includes(status)) throw new Error("公司状态无效");
   const update = db.prepare("UPDATE campaign_organizations SET status = ?, review_reason = ?, owner_name = CASE WHEN owner_name = '待分配' THEN '陈晨' ELSE owner_name END, updated_at = ? WHERE id = ?");
   const timestamp = now();
   db.exec("BEGIN IMMEDIATE");
@@ -89,15 +97,17 @@ export function reviewOrganizations(ids: string[], status: ReviewStatus, reason 
 }
 
 export function listPeople(campaignId?: string): CampaignPerson[] {
-  const where = campaignId ? "WHERE cp.campaign_id = ?" : "";
+  const where = `WHERE EXISTS (SELECT 1 FROM resume_documents r WHERE r.person_id = cp.person_id AND r.campaign_id = cp.campaign_id AND r.graph_eligible = 1)${campaignId ? " AND cp.campaign_id = ?" : ""}`;
   const rows = db.prepare(`SELECT cp.*, p.name, p.headline, p.location, o.name AS organization_name FROM campaign_people cp JOIN people p ON p.id = cp.person_id JOIN organizations o ON o.id = cp.organization_id ${where} ORDER BY cp.fit_score DESC, cp.updated_at DESC`).all(...(campaignId ? [campaignId] : [])) as Row[];
   return rows.map((row) => {
     const history = db.prepare(`SELECT id, action, reason_code, note, operator_name, created_at
       FROM feedback WHERE campaign_id = ? AND entity_type = 'PERSON' AND entity_id = ?
-      ORDER BY created_at DESC LIMIT 50`).all(String(row.campaign_id), String(row.person_id)) as Row[];
+      ORDER BY created_at DESC, id DESC LIMIT 50`).all(String(row.campaign_id), String(row.person_id)) as Row[];
     return {
       id: String(row.id), campaignId: String(row.campaign_id), personId: String(row.person_id), name: String(row.name), headline: String(row.headline), location: String(row.location), organizationName: String(row.organization_name), slot: String(row.slot), status: row.status as PersonStatus, fitScore: Number(row.fit_score), evidenceCoverage: Number(row.evidence_coverage), identityConfidence: Number(row.identity_confidence), recommendationReason: String(row.recommendation_reason), strengths: json(String(row.strengths_json)), unknowns: json(String(row.unknowns_json)), riskFlags: json(String(row.risk_flags_json)), ownerName: String(row.owner_name), reviewReason: String(row.review_reason), lastInteractionAt: row.last_interaction_at ? String(row.last_interaction_at) : null, updatedAt: String(row.updated_at), evidence: evidenceFor("PERSON", String(row.person_id)),
       stageHistory: history.map((event) => ({ id: String(event.id), status: String(event.action), reason: String(event.note || (event.reason_code === "WORKFLOW_TRANSITION" ? "" : event.reason_code) || ""), operatorName: String(event.operator_name), createdAt: String(event.created_at) })),
+      origins: listCandidateOrigins(String(row.person_id), String(row.campaign_id)),
+      activityEvents: listActivityEvents({ campaignId: String(row.campaign_id), personId: String(row.person_id), limit: 50 }),
     };
   });
 }
@@ -120,6 +130,20 @@ export function reviewPeople(ids: string[], status: PersonStatus, reason = "", o
       db.prepare(`INSERT INTO feedback (id, campaign_id, entity_type, entity_id, action, reason_code, note, operator_name, created_at)
         VALUES (?, ?, 'PERSON', ?, ?, 'WORKFLOW_TRANSITION', ?, ?, ?)`)
         .run(randomUUID(), row.campaign_id, row.person_id, status, reason.trim(), operatorName, timestamp);
+      const eventType = status === "CONTACTED" ? "CONTACT_RECORDED"
+        : status === "ENGAGED" ? "REPLY_RECORDED"
+          : status === "INTERVIEWING" ? "INTERVIEW_RECORDED"
+            : status === "OFFERED" ? "OFFER_RECORDED"
+              : status === "HIRED" ? "HIRED_RECORDED"
+                : ["CLOSED", "DO_NOT_CONTACT"].includes(status) ? "CANDIDATE_REJECTED"
+                  : "CANDIDATE_STAGE_CHANGED";
+      const origin = db.prepare(`SELECT search_task_id, strategy_version_id, experiment_assignment_id, organization_id
+        FROM candidate_origins WHERE campaign_id = ? AND person_id = ? ORDER BY created_at DESC LIMIT 1`).get(row.campaign_id, row.person_id) as Row | undefined;
+      recordActivityEvent({ campaignId: String(row.campaign_id), personId: String(row.person_id), organizationId: origin?.organization_id ? String(origin.organization_id) : null,
+        searchTaskId: origin?.search_task_id ? String(origin.search_task_id) : null, strategyVersionId: origin?.strategy_version_id ? String(origin.strategy_version_id) : null,
+        experimentAssignmentId: origin?.experiment_assignment_id ? String(origin.experiment_assignment_id) : null,
+        eventType, fromStatus: currentStatus, toStatus: status, reasonCode: "WORKFLOW_TRANSITION", actorType: "USER", actorId: operatorName,
+        payload: { reason: reason.trim() }, occurredAt: timestamp, idempotencyKey: `candidate-stage:${id}:${status}:${timestamp}` });
     }
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
@@ -171,7 +195,7 @@ export function getDashboard(): DashboardData {
   const highMatchEngaged = count("SELECT COUNT(*) AS count FROM campaign_people WHERE status IN ('ENGAGED','SCREENING','CONVERTED','INTERVIEWING','OFFERED','HIRED') AND fit_score >= 80");
   return {
     metrics: {
-      pendingCompanies: count("SELECT COUNT(*) AS count FROM campaign_organizations WHERE status = 'PENDING_REVIEW'"),
+      learnedCompanies: count("SELECT COUNT(*) AS count FROM campaign_organizations WHERE status <> 'REJECTED'"),
       pendingPeople: count("SELECT COUNT(*) AS count FROM campaign_people WHERE status IN ('PENDING_REVIEW','NEEDS_RESEARCH')"),
       readyToContact: count("SELECT COUNT(*) AS count FROM campaign_people WHERE status = 'READY_TO_CONTACT'"),
       highMatchEngaged,

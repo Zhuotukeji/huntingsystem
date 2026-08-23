@@ -13,6 +13,66 @@ const greetingDraftSchema = z.object({
   references: z.array(z.string().max(100)).max(4),
 });
 
+const webResearchSchema = z.object({
+  summary: z.string().min(20).max(1600),
+  sources: z.array(z.object({
+    sourceType: z.string().min(2).max(80),
+    trustTier: z.enum(["OFFICIAL", "REPUTABLE", "INDUSTRY", "WEAK"]),
+    title: z.string().min(2).max(240),
+    url: z.string().url().max(1000),
+    publisher: z.string().max(160),
+    publishedAt: z.string().nullable(),
+    quote: z.string().min(4).max(1200),
+  })).min(1).max(20),
+  claims: z.array(z.object({
+    claimType: z.string().min(2).max(80),
+    classification: z.enum(["FACT", "INFERENCE", "PREDICTION", "DISPUTED"]),
+    statement: z.string().min(4).max(600),
+    value: z.record(z.string(), z.unknown()).default({}),
+    confidence: z.number().min(0).max(100),
+    sourceUrls: z.array(z.string().url().max(1000)).max(10),
+    validFrom: z.string().nullable(),
+    validUntil: z.string().nullable(),
+  })).max(40),
+  businessUnits: z.array(z.object({
+    name: z.string().min(2).max(160),
+    unitType: z.enum(["BUSINESS_UNIT", "PRODUCT_LINE", "REGIONAL_UNIT", "FUNCTION"]),
+    description: z.string().min(4).max(1000),
+    status: z.string().max(80),
+    confidence: z.number().min(0).max(100),
+    sourceUrls: z.array(z.string().url().max(1000)).max(10),
+    validFrom: z.string().nullable(),
+    validUntil: z.string().nullable(),
+  })).max(30),
+  projects: z.array(z.object({
+    name: z.string().min(2).max(240),
+    businessUnitName: z.string().max(160).nullable(),
+    projectType: z.enum(["CLIENT_DELIVERY", "TENDER", "PRODUCT_LAUNCH", "REGIONAL_EXPANSION", "NEW_BUSINESS", "ORGANIZATION_CHANGE"]),
+    status: z.string().max(80),
+    region: z.string().max(120),
+    clientName: z.string().max(160),
+    products: z.array(z.string().max(100)).max(20),
+    skills: z.array(z.string().max(100)).max(30),
+    summary: z.string().min(4).max(1000),
+    confidence: z.number().min(0).max(100),
+    talentDemandConfidence: z.number().min(0).max(100),
+    sourceUrls: z.array(z.string().url().max(1000)).max(10),
+    startedAt: z.string().nullable(),
+    endedAt: z.string().nullable(),
+  })).max(20),
+  events: z.array(z.object({
+    eventType: z.string().min(2).max(80),
+    title: z.string().min(2).max(240),
+    summary: z.string().min(4).max(1000),
+    classification: z.enum(["FACT", "INFERENCE", "PREDICTION", "DISPUTED"]),
+    confidence: z.number().min(0).max(100),
+    sourceUrls: z.array(z.string().url().max(1000)).max(10),
+    occurredAt: z.string().nullable(),
+  })).max(20),
+});
+
+export type WebResearchResult = z.infer<typeof webResearchSchema>;
+
 export const resumeAnalysisSchema = z.object({
   person: z.object({
     name: z.string().min(1).max(80),
@@ -29,11 +89,19 @@ export const resumeAnalysisSchema = z.object({
     endDate: z.string().nullable(),
     isCurrent: z.boolean(),
     summary: z.string().max(800),
+    evidenceQuote: z.string().min(4).max(800),
     location: z.string().max(100),
     industry: z.string().max(100),
     businessTags: z.array(z.string().max(60)).max(15),
     markets: z.array(z.string().max(60)).max(12),
     channels: z.array(z.string().max(60)).max(12),
+    monetization: z.array(z.string().max(100)).max(10),
+    businessHistory: z.array(z.string().max(240)).max(12),
+    currentBusiness: z.array(z.string().max(240)).max(12),
+    businessStatus: z.enum(["GROWING", "STABLE", "TRANSFORMING", "CONTRACTING", "UNKNOWN"]),
+    businessStatusSummary: z.string().max(500),
+    businessSignals: z.array(z.string().max(200)).max(10),
+    businessStatusConfidence: z.number().min(0).max(1),
     confidence: z.number().min(0).max(1),
   })).max(30),
   skills: z.array(z.object({
@@ -85,7 +153,7 @@ function createClient() {
   if (!config.enabled || !config.apiKey || !config.baseUrl) return null;
   return {
     config,
-    client: new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl, timeout: 60_000, maxRetries: 1 }),
+    client: new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl, timeout: 180_000, maxRetries: 1 }),
   };
 }
 
@@ -134,11 +202,69 @@ export async function testAiConnection() {
   return { ok: response.choices[0]?.message?.content?.includes("READY") || false, latencyMs: Date.now() - startedAt, model: runtime.config.model };
 }
 
+export async function testAiWebSearchCapability() {
+  const runtime = createClient();
+  if (!runtime) throw new Error("Sub2API 尚未启用或配置不完整");
+  if (runtime.config.apiStyle !== "responses") throw new Error("联网研究要求 AI API 格式使用 Responses API");
+  const startedAt = Date.now();
+  const response = await runtime.client.responses.create({
+    model: runtime.config.model,
+    tools: [{ type: "web_search" }],
+    tool_choice: "required",
+    include: ["web_search_call.action.sources"],
+    input: "搜索 OpenAI 官方网站，回答其官方网站域名。只用一句话回答。",
+  });
+  const usedWebSearch = response.output.some((item) => item.type === "web_search_call");
+  if (!usedWebSearch) throw new Error("当前模型未调用 web_search 工具");
+  return { ok: true, latencyMs: Date.now() - startedAt, model: runtime.config.model, capability: "AVAILABLE" as const };
+}
+
+export async function researchOrganizationWithWebSearch(input: { organizationName: string; topic: string; context?: string }) {
+  const runtime = createClient();
+  if (!runtime) throw new Error("Sub2API 尚未启用或配置不完整");
+  if (runtime.config.apiStyle !== "responses") throw new Error("联网研究要求 AI API 格式使用 Responses API");
+  const response = await runtime.client.responses.parse({
+    model: runtime.config.model,
+    tools: [{ type: "web_search" }],
+    tool_choice: "required",
+    include: ["web_search_call.action.sources"],
+    input: [{
+      role: "system",
+      content: [
+        "你是企业竞品业务情报研究员。必须先使用 web_search，再输出结构化结果。",
+        "只使用公开、合法来源，优先官网、政府及招投标平台、客户案例和主流媒体。",
+        "每条事实必须关联实际访问到的 sourceUrls，并给出网页中的短引用。URL 不得编造。",
+        "严格区分 FACT、INFERENCE、PREDICTION、DISPUTED；推断和预测不得包装成事实。",
+        "项目重点包括客户交付、招投标、产品落地、区域扩张、新业务和重大组织调整，并谨慎推断可能的人才需求。",
+      ].join("\n"),
+    }, {
+      role: "user",
+      content: JSON.stringify({ organization: input.organizationName, topic: input.topic, knownContext: input.context || "", currentDate: new Date().toISOString().slice(0, 10) }),
+    }],
+    text: { format: zodTextFormat(webResearchSchema, "company_web_research") },
+  });
+  if (!response.output.some((item) => item.type === "web_search_call")) throw new Error("模型没有执行 web_search，研究结果已拒绝入库");
+  if (!response.output_parsed) throw new Error("模型未返回结构化研究结果");
+  const sourceUrls = new Set(response.output_parsed.sources.map((source) => source.url));
+  const claims = response.output_parsed.claims.map((claim) => ({ ...claim, sourceUrls: claim.sourceUrls.filter((url) => sourceUrls.has(url)) }));
+  if (claims.some((claim) => claim.classification === "FACT" && !claim.sourceUrls.length)) throw new Error("模型返回了没有可验证来源的事实，研究结果已拒绝入库");
+  const keepReferenced = <T extends { sourceUrls: string[] }>(items: T[]) => items
+    .map((item) => ({ ...item, sourceUrls: item.sourceUrls.filter((url) => sourceUrls.has(url)) }))
+    .filter((item) => item.sourceUrls.length > 0);
+  return {
+    ...response.output_parsed,
+    claims,
+    businessUnits: keepReferenced(response.output_parsed.businessUnits),
+    projects: keepReferenced(response.output_parsed.projects),
+    events: keepReferenced(response.output_parsed.events),
+  };
+}
+
 export async function analyzeResumeWithAi(campaign: Campaign, resumeText: string) {
   return runStructured(
     resumeAnalysisSchema,
     "resume_analysis",
-    "你是企业内部人才情报分析器。只能提取简历明确包含的事实；未知内容保持空值或加入 gaps；不得根据性别、年龄、婚育等敏感信息评分。每个技能和任职关系都要引用简历中的事实。",
+    "你是企业内部人才与公司情报分析器。提取候选人事实的同时，为每段任职公司区分历史业务、当前业务、商业化方式和业务状态。每段任职的 evidenceQuote 必须逐字复制包含公司、职位及核心职责的简历原文，不得改写。技能 evidence 也必须逐字复制能够支持该技能的原文。历史业务与当前业务只能来自简历明确事实；业务状态允许基于营收、预算、团队扩张、0到1、规模化、转型、收缩等明确信号谨慎推断，必须列出能在原文中找到的 businessSignals 和置信度，证据不足时使用 UNKNOWN，不得把推断写成事实。不得根据性别、年龄、婚育等敏感信息评分。",
     JSON.stringify({
       talentProfile: {
         role: campaign.roleName,

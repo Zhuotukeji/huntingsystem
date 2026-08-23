@@ -12,8 +12,14 @@ export const PERMISSION_DEFINITIONS = [
   { code: "search_tasks.manage", name: "执行搜索任务", group: "BOSS 搜索任务", description: "领取任务、更新状态并提交反馈", sortOrder: 51 },
   { code: "learning.view", name: "查看 AI 学习", group: "AI 学习中心", description: "查看学习运行、指标和建议", sortOrder: 60 },
   { code: "learning.manage", name: "运行 AI 学习", group: "AI 学习中心", description: "发起增量学习、重建和重试", sortOrder: 61 },
+  { code: "reviews.view", name: "查看 AI 复盘", group: "AI 自主复盘", description: "查看复盘指标、诊断和应用记录", sortOrder: 62 },
+  { code: "reviews.manage", name: "运行 AI 复盘", group: "AI 自主复盘", description: "发起复盘并管理自动应用", sortOrder: 63 },
+  { code: "strategies.view", name: "查看策略版本", group: "AI 自主复盘", description: "查看策略版本、实验和归因", sortOrder: 64 },
+  { code: "strategies.manage", name: "管理策略版本", group: "AI 自主复盘", description: "激活、回滚策略和管理实验", sortOrder: 65 },
+  { code: "intelligence.view", name: "查看竞品情报", group: "竞品情报", description: "查看公开来源、证据、项目和组织事件", sortOrder: 72 },
+  { code: "intelligence.manage", name: "管理竞品情报", group: "竞品情报", description: "发起联网研究并处理冲突", sortOrder: 73 },
   { code: "organizations.view", name: "查看公司发现", group: "公司发现", description: "查看公司画像和简历证据", sortOrder: 70 },
-  { code: "organizations.manage", name: "审核公司", group: "公司发现", description: "批准、观察或排除公司", sortOrder: 71 },
+  { code: "organizations.manage", name: "管理公司", group: "公司发现", description: "重点观察、排除或恢复 AI 入库公司", sortOrder: 71 },
   { code: "people.view", name: "查看人员发现", group: "人员发现", description: "查看候选人画像和证据", sortOrder: 80 },
   { code: "people.manage", name: "审核人员", group: "人员发现", description: "更新候选人审核和触达状态", sortOrder: 81 },
   { code: "settings.view", name: "查看系统设置", group: "系统设置", description: "查看数据源和连接状态", sortOrder: 90 },
@@ -127,14 +133,17 @@ export function initializeAccessControl() {
   const recruiterPermissions: PermissionCode[] = [
     "dashboard.view", "campaigns.view", "campaigns.manage", "resumes.view", "resumes.manage", "graph.view",
     "search_tasks.view", "search_tasks.manage", "learning.view", "learning.manage", "organizations.view",
-    "organizations.manage", "people.view", "people.manage",
+    "organizations.manage", "people.view", "people.manage", "reviews.view", "reviews.manage", "strategies.view", "strategies.manage",
+    "intelligence.view", "intelligence.manage",
   ];
   const permissionCount = (roleId: string) => Number((db.prepare("SELECT COUNT(*) AS count FROM role_permissions WHERE role_id = ?").get(roleId) as Row).count);
   if (!permissionCount(RECRUITER_ROLE_ID)) recruiterPermissions.forEach((code) => addPermission.run(RECRUITER_ROLE_ID, code));
+  else recruiterPermissions.forEach((code) => addPermission.run(RECRUITER_ROLE_ID, code));
   if (!permissionCount(VIEWER_ROLE_ID)) {
     PERMISSION_DEFINITIONS.filter((permission) => permission.code.endsWith(".view") && permission.code !== "access.view" && permission.code !== "settings.view")
       .forEach((permission) => addPermission.run(VIEWER_ROLE_ID, permission.code));
   }
+  else ["reviews.view", "strategies.view", "intelligence.view"].forEach((code) => addPermission.run(VIEWER_ROLE_ID, code));
 
   db.exec("BEGIN IMMEDIATE");
   try {

@@ -1,32 +1,35 @@
 import Link from "next/link";
-import { ArrowRight, Building2, Clock3, MessageSquareText, Target, UserCheck, Users } from "lucide-react";
+import { Activity, ArrowRight, BarChart3, Building2, Clock3, MessageSquareText, Target, Users } from "lucide-react";
 import { getDashboard } from "@/lib/repository";
 import { personStatusLabels, shortDate } from "@/lib/labels";
 import { Metric, PageIntro, StatusBadge } from "@/components/ui";
 import { requirePagePermission } from "@/lib/auth";
+import { computeAnalyticsReport, defaultAnalyticsCampaignId } from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   await requirePagePermission("dashboard.view");
   const data = getDashboard();
+  const analyticsCampaignId = defaultAnalyticsCampaignId();
+  const analytics = analyticsCampaignId ? computeAnalyticsReport(analyticsCampaignId, 28) : null;
   const maxFunnel = Math.max(...data.funnel.map((item) => item.value), 1);
   const today = new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", weekday: "long", month: "long", day: "numeric" }).format(new Date());
   return <>
-    <PageIntro eyebrow={today} title="今日寻访进度" description={`系统已按证据质量和业务匹配度排好今天的工作。先处理 ${data.metrics.pendingCompanies + data.metrics.pendingPeople} 条待判断记录，再启动下一轮发现。`} />
+    <PageIntro eyebrow={today} title="今日寻访进度" description={`系统已自主学习 ${data.metrics.learnedCompanies} 家公司，当前有 ${data.metrics.pendingPeople} 名人选等待判断或自动推进。`} actions={<Link className="button" href="/analytics"><BarChart3 size={15} />查看完整数据</Link>} />
     <div className="metrics-grid">
-      <Metric icon={Building2} label="待审核公司" value={data.metrics.pendingCompanies} detail="优先审核高于 80 分的公司" tone="green" />
-      <Metric icon={Users} label="待审核人选" value={data.metrics.pendingPeople} detail="含需要补充证据的人选" tone="blue" />
-      <Metric icon={UserCheck} label="本周高匹配沟通" value={`${data.metrics.highMatchEngaged}/${data.metrics.weeklyGoal}`} detail="北极星指标 · 目标仍需基线校准" tone="amber" />
-      <Metric icon={Clock3} label="预计节省时间" value={`${data.metrics.estimatedHoursSaved}h`} detail="按每份研究节省 22 分钟估算" tone="purple" />
+      <Metric icon={Target} label="每百结果高质量人选" value={analytics?.search.qualifiedPer100 ?? "暂无"} detail={`${analytics?.search.highQualityCandidates || 0} 人 / ${analytics?.search.results || 0} 个结果 · 近 28 天`} tone="green" />
+      <Metric icon={Users} label="高质量人选有效沟通率" value={analytics?.search.highQualityToConversation.percent === null || !analytics ? "暂无" : `${analytics.search.highQualityToConversation.percent}%`} detail={`${analytics?.search.effectiveConversations || 0} 次有效沟通 · 近 28 天`} tone="blue" />
+      <Metric icon={Clock3} label="首次有效回复中位耗时" value={analytics?.speed.medianHoursToFirstReply === null || !analytics ? "暂无" : `${analytics.speed.medianHoursToFirstReply} 小时`} detail={`${analytics?.speed.replySamples || 0} 个可归因样本`} tone="amber" />
+      <Metric icon={Activity} label="当前策略实际增益" value={analytics?.strategy.gainPercent === null || !analytics ? "样本不足" : `${analytics.strategy.gainPercent > 0 ? "+" : ""}${analytics.strategy.gainPercent}%`} detail={analytics?.strategy.sampleMessage || "暂无活动战役"} tone="purple" />
     </div>
 
     <div className="content-grid">
       <div>
         <section className="section">
-          <div className="section-head"><div><h3>今天优先处理</h3><p>从简历学习结果进入人工判断</p></div><Link className="text-link" href="/search-tasks">BOSS 搜索任务 <ArrowRight size={12} /></Link></div>
+          <div className="section-head"><div><h3>今天优先处理</h3><p>公司自主入库，人选按阈值或人工推进</p></div><Link className="text-link" href="/search-tasks">BOSS 搜索任务 <ArrowRight size={12} /></Link></div>
           <div className="panel">
-            <div className="data-row"><div className="row-icon"><Building2 size={18} /></div><div className="row-main"><strong>审核简历中发现的公司</strong><span>{data.metrics.pendingCompanies} 家等待确认业务匹配和证据</span></div><Link className="button small" href="/organizations">查看公司</Link></div>
+            <div className="data-row"><div className="row-icon"><Building2 size={18} /></div><div className="row-main"><strong>查看 AI 公司情报</strong><span>{data.metrics.learnedCompanies} 家已沉淀业务画像和简历证据</span></div><Link className="button small" href="/organizations">查看公司</Link></div>
             <div className="data-row"><div className="row-icon"><Users size={18} /></div><div className="row-main"><strong>审核候选人档案</strong><span>{data.metrics.pendingPeople} 人等待判断或补充信息</span></div><Link className="button small" href="/people">查看人选</Link></div>
           </div>
         </section>

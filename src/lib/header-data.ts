@@ -72,7 +72,7 @@ export function searchHeaderData(rawQuery: string, limit = 12): HeaderSearchResu
     ORDER BY r.updated_at DESC
     LIMIT 4`).all(pattern, pattern, pattern, pattern, pattern) as Row[];
 
-  const organizations = db.prepare(`SELECT DISTINCT o.id, o.name, o.location, co.category, c.name AS campaign_name
+  const organizations = db.prepare(`SELECT o.id, o.name, o.location, co.category, c.name AS campaign_name
     FROM campaign_organizations co
     JOIN organizations o ON o.id = co.organization_id
     JOIN campaigns c ON c.id = co.campaign_id
@@ -84,7 +84,7 @@ export function searchHeaderData(rawQuery: string, limit = 12): HeaderSearchResu
     ORDER BY co.fit_score DESC, co.updated_at DESC
     LIMIT 4`).all(...values) as Row[];
 
-  const people = db.prepare(`SELECT DISTINCT p.id, p.name, p.headline, p.location, o.name AS organization_name, c.name AS campaign_name
+  const people = db.prepare(`SELECT p.id, p.name, p.headline, p.location, o.name AS organization_name, c.name AS campaign_name
     FROM campaign_people cp
     JOIN people p ON p.id = cp.person_id
     JOIN organizations o ON o.id = cp.organization_id
@@ -129,14 +129,6 @@ export function searchHeaderData(rawQuery: string, limit = 12): HeaderSearchResu
 export function getHeaderNotifications() {
   const count = (sql: string) => Number((db.prepare(sql).get() as Row).count);
   const candidates: HeaderNotification[] = [
-    {
-      id: "organizations-pending",
-      kind: "organization",
-      title: "公司等待审核",
-      description: "确认业务匹配、人才迁移性和简历证据",
-      href: "/organizations",
-      count: count("SELECT COUNT(*) AS count FROM campaign_organizations WHERE status = 'PENDING_REVIEW'"),
-    },
     {
       id: "people-pending",
       kind: "person",

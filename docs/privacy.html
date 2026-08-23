@@ -127,7 +127,7 @@
     <section>
       <h2>3. 信息如何被触发和使用</h2>
       <ul>
-        <li>扩展不会在后台持续监控页面。截图分析和简历帧采集都必须由招聘人员点击侧边栏中的明确按钮触发。</li>
+        <li>扩展不会在后台持续监控页面。截图分析和简历帧采集都必须由招聘人员点击独立工具窗口中的明确按钮触发；Chrome 还要求招聘人员在目标标签页主动点击一次扩展图标，以授予该标签页临时捕获权限。</li>
         <li>开始真实简历扫描前，招聘人员必须填写来源及处理依据并确认当前招聘用途。</li>
         <li>候选人判断仅提供证据、评分和未知项，最终决定由招聘人员作出。</li>
         <li>沟通内容只生成可复制草稿，扩展不会自动发送。</li>
@@ -140,7 +140,7 @@
       <h3>Chrome 本地存储</h3>
       <p>扩展在 Chrome 本地存储中保存后台地址、工作邮箱、审核模式偏好和有效期最长 7 天的会话令牌。插件访问码只用于向本地后台换取会话，不由扩展持久化。</p>
       <h3>截图与关键帧</h3>
-      <p>截图和关键帧只在当前侧边栏内存及请求处理期间短暂存在，不写入 Chrome 存储、后台数据库、日志或视频文件。成功、取消、关闭侧边栏或发生错误后，扩展会释放这些画面数据。</p>
+      <p>截图和关键帧只在当前工具窗口内存及请求处理期间短暂存在，不写入 Chrome 存储、后台数据库、日志或视频文件。成功、取消、关闭工具窗口或发生错误后，扩展会释放这些画面数据。</p>
       <h3>结构化招聘数据</h3>
       <p>识别后的结构化简历、任职关系、公司事实、技能和学习结果保存在招聘企业自行控制的后台数据库中，按照该企业的招聘数据制度保留，直至企业管理员根据适用制度和请求进行删除或更正。</p>
     </section>
@@ -159,9 +159,8 @@
       <h2>6. Chrome 权限说明</h2>
       <ul>
         <li><strong>activeTab：</strong>在用户主动操作且 Chrome 已授予当前页临时权限时，确认允许捕获当前可见标签页。</li>
-        <li><strong>tabCapture：</strong>按已经校验的标签页 ID 定向取得当前 BOSS 页面或内置演示页的媒体流，不使用屏幕、窗口或插件侧边栏作为扫描来源。标签页流仅在本次扫描期间保存在内存中。</li>
+        <li><strong>tabCapture：</strong>按已经校验的标签页 ID 定向取得原始 Chrome 窗口中的当前 BOSS 页面或内置演示页媒体流，不使用屏幕、窗口或插件工具窗口作为扫描来源。标签页流仅在本次扫描期间保存在内存中。</li>
         <li><strong>tabs：</strong>确认当前页面属于 BOSS 或内置演示页，并在用户点击后打开相应页面。</li>
-        <li><strong>sidePanel：</strong>显示扩展的主要任务、扫描和设置界面。</li>
         <li><strong>storage：</strong>保存连接配置、会话和审核模式偏好。</li>
         <li><strong>localhost/127.0.0.1 主机权限：</strong>只用于连接招聘企业自行运行的本地后台。</li>
       </ul>
@@ -212,7 +211,7 @@
       <section>
         <h2>Collection, use, and user control</h2>
         <ul>
-          <li>The extension does not continuously monitor pages in the background. Screenshot analysis and resume-frame capture each require an explicit side-panel button click by the recruiter.</li>
+          <li>The extension does not continuously monitor pages in the background. Screenshot analysis and resume-frame capture each require an explicit workspace-window button click, and Chrome additionally requires the recruiter to click the extension icon once on the target tab to grant temporary capture access.</li>
           <li>Real resume scans require the recruiter to record and confirm a lawful recruiting basis.</li>
           <li>Candidate assessments provide evidence, scores, and unknowns only; a human recruiter makes the final decision.</li>
           <li>Outreach is generated only as a copyable draft and is never sent automatically.</li>
@@ -223,7 +222,7 @@
       <section>
         <h2>Storage and retention</h2>
         <p>Chrome local storage contains the backend address, work email, review-mode preference, and a session token valid for no more than seven days. The access code is exchanged for a session and is not persisted by the extension.</p>
-        <p>Screenshots and keyframes exist only temporarily in side-panel memory and during request processing. They are not written to Chrome storage, backend files, the backend database, logs, or video files. They are released after success, cancellation, side-panel closure, or an error.</p>
+        <p>Screenshots and keyframes exist only temporarily in the workspace window's memory and during request processing. They are not written to Chrome storage, backend files, the backend database, logs, or video files. They are released after success, cancellation, workspace-window closure, or an error.</p>
         <p>Extracted resume records, employment relationships, organization facts, skills, and learning results are retained in the employer-controlled backend under the employer's recruiting data policy until an administrator removes or corrects them under applicable policy and requests.</p>
       </section>
 
@@ -241,9 +240,8 @@
         <h2>Chrome permissions</h2>
         <ul>
           <li><strong>activeTab:</strong> preferentially capture the current visible tab after a user action when Chrome has granted temporary access to that tab.</li>
-          <li><strong>Tab-sharing fallback:</strong> if temporary tab access is unavailable, Chrome asks the user to choose a source. The extension accepts only a Chrome tab, rejects windows and entire screens, and requires first-frame confirmation. The stream remains in memory only for the current scan.</li>
+          <li><strong>tabCapture:</strong> obtain an in-memory media stream for the validated active BOSS or bundled demo tab in the original Chrome window, targeted by tab ID. The extension does not use a screen-sharing picker or capture its workspace window.</li>
           <li><strong>tabs:</strong> verify that the current page is a BOSS page or the bundled demo and open a page after a user action.</li>
-          <li><strong>sidePanel:</strong> provide the primary tasks, scanning, and settings workspace.</li>
           <li><strong>storage:</strong> retain connection, session, and review-mode settings.</li>
           <li><strong>localhost/127.0.0.1 host access:</strong> connect only to the employer-operated local backend.</li>
         </ul>

@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { BrainCircuit, BriefcaseBusiness, Building2, ChevronDown, ClipboardList, FileText, KeyRound, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, Users, X } from "lucide-react";
+import { BarChart3, BrainCircuit, BriefcaseBusiness, Building2, ChevronDown, ClipboardList, FileText, KeyRound, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, Users, X } from "lucide-react";
 import { HeaderTools } from "@/components/header-tools";
 import type { CurrentUser } from "@/lib/auth";
 import type { PermissionCode } from "@/lib/access-control";
 
 const navigation: { href: string; label: string; icon: typeof LayoutDashboard; permission: PermissionCode }[] = [
   { href: "/", label: "工作台", icon: LayoutDashboard, permission: "dashboard.view" },
+  { href: "/analytics", label: "数据分析", icon: BarChart3, permission: "dashboard.view" },
   { href: "/campaigns", label: "寻访战役", icon: BriefcaseBusiness, permission: "campaigns.view" },
   { href: "/resumes", label: "简历库", icon: FileText, permission: "resumes.view" },
   { href: "/graph", label: "人才图谱", icon: Network, permission: "graph.view" },
@@ -20,7 +21,7 @@ const navigation: { href: string; label: string; icon: typeof LayoutDashboard; p
 ];
 
 const titles: Record<string, string> = {
-  "/": "今日工作台", "/campaigns": "寻访战役", "/resumes": "简历库", "/graph": "公司与人才图谱", "/search-tasks": "BOSS 搜索任务", "/learning": "AI 学习中心", "/organizations": "公司发现", "/people": "候选人推进", "/settings": "数据源与设置", "/access": "人员与权限", "/account": "账号安全", "/forbidden": "访问受限",
+  "/": "今日工作台", "/analytics": "数据分析", "/campaigns": "寻访战役", "/resumes": "简历库", "/graph": "公司与人才图谱", "/search-tasks": "BOSS 搜索任务", "/learning": "AI 学习中心", "/organizations": "公司发现", "/people": "候选人推进", "/settings": "数据源与设置", "/access": "人员与权限", "/account": "账号安全", "/forbidden": "访问受限",
 };
 
 export function AppShell({ children, user }: { children: React.ReactNode; user: CurrentUser | null }) {

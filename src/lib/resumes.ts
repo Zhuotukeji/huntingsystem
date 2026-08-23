@@ -5,6 +5,10 @@ import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
 import { db, now } from "@/lib/db";
 import type { EmploymentRecord, ResumeDocument, ResumeIdentityDecision, ResumeProfile } from "@/lib/types";
+import { applicationPath } from "@/lib/runtime-paths";
+import { preflightAssessment } from "@/lib/resume-quality";
+import { getCandidateAutomationSettings } from "@/lib/settings";
+import { recordActivityEvent } from "@/lib/autonomy";
 
 type Row = Record<string, string | number | null>;
 
@@ -12,6 +16,9 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const allowedExtensions = new Set([".pdf", ".docx", ".txt", ".md"]);
 
 function resumeFrom(row: Row): ResumeDocument {
+  const parsed = <T>(value: string | number | null, fallback: T) => {
+    try { return value ? JSON.parse(String(value)) as T : fallback; } catch { return fallback; }
+  };
   return {
     id: String(row.id),
     campaignId: String(row.campaign_id),
@@ -24,6 +31,13 @@ function resumeFrom(row: Row): ResumeDocument {
     legalBasis: String(row.legal_basis),
     contentHash: String(row.content_hash),
     status: row.status as ResumeDocument["status"],
+    qualityScore: Number(row.quality_score || 0),
+    qualityGrade: String(row.quality_grade || "UNASSESSED") as ResumeDocument["qualityGrade"],
+    qualityReasons: parsed<string[]>(row.quality_reasons_json, []),
+    qualityMetrics: parsed<ResumeDocument["qualityMetrics"]>(row.quality_metrics_json, {}),
+    graphEligible: Boolean(row.graph_eligible),
+    searchEligible: Boolean(row.search_eligible),
+    qualityAssessedAt: row.quality_assessed_at ? String(row.quality_assessed_at) : null,
     parseVersion: String(row.parse_version),
     errorMessage: String(row.error_message),
     retentionUntil: row.retention_until ? String(row.retention_until) : null,
@@ -31,6 +45,9 @@ function resumeFrom(row: Row): ResumeDocument {
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
     analyzedAt: row.analyzed_at ? String(row.analyzed_at) : null,
+    sourceSearchTaskId: row.source_search_task_id ? String(row.source_search_task_id) : null,
+    sourceStrategyVersionId: row.source_strategy_version_id ? String(row.source_strategy_version_id) : null,
+    experimentAssignmentId: row.experiment_assignment_id ? String(row.experiment_assignment_id) : null,
   };
 }
 
@@ -61,6 +78,9 @@ export async function importResume(input: {
   createdBy: string;
   buffer?: Buffer;
   rawText?: string;
+  sourceSearchTaskId?: string | null;
+  sourceStrategyVersionId?: string | null;
+  experimentAssignmentId?: string | null;
 }) {
   if (!input.campaignId) throw new Error("请选择人才画像");
   if (!input.legalBasis.trim()) throw new Error("必须填写简历来源或处理依据");
@@ -73,21 +93,49 @@ export async function importResume(input: {
   if (extractedText.length > 200_000) throw new Error("简历正文超过 20 万字符，请拆分后导入");
   const contentHash = createHash("sha256").update(extractedText).digest("hex");
   const existing = db.prepare("SELECT id FROM resume_documents WHERE campaign_id = ? AND content_hash = ?").get(input.campaignId, contentHash) as { id: string } | undefined;
-  if (existing) return { resume: getResume(existing.id)!, duplicate: true };
+  if (existing) {
+    if (input.sourceSearchTaskId || input.sourceStrategyVersionId || input.experimentAssignmentId) {
+      db.prepare(`UPDATE resume_documents SET source_search_task_id = COALESCE(source_search_task_id, ?),
+        source_strategy_version_id = COALESCE(source_strategy_version_id, ?), experiment_assignment_id = COALESCE(experiment_assignment_id, ?) WHERE id = ?`)
+        .run(input.sourceSearchTaskId || null, input.sourceStrategyVersionId || null, input.experimentAssignmentId || null, existing.id);
+    }
+    return { resume: getResume(existing.id)!, duplicate: true };
+  }
 
   const id = randomUUID();
   let storagePath = "";
   if (input.buffer) {
-    const storageDirectory = join(process.cwd(), ".data", "resumes");
+    const storageDirectory = applicationPath(".data", "resumes");
     mkdirSync(storageDirectory, { recursive: true });
     storagePath = join(storageDirectory, `${id}${extension}`);
     writeFileSync(storagePath, input.buffer, { flag: "wx" });
   }
   const timestamp = now();
+  const quality = preflightAssessment(extractedText, getCandidateAutomationSettings().resumeQualityPolicy);
+  const initialStatus = quality.grade === "QUARANTINED" ? "QUARANTINED" : "PENDING";
   db.prepare(`INSERT INTO resume_documents
-    (id, campaign_id, person_id, file_name, mime_type, source_type, legal_basis, storage_path, content_hash, extracted_text, status, parse_version, error_message, retention_until, created_by, created_at, updated_at, analyzed_at)
-    VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 'PENDING', '', '', ?, ?, ?, ?, NULL)`)
-    .run(id, input.campaignId, input.fileName, input.mimeType, input.sourceType, input.legalBasis.trim(), storagePath, contentHash, extractedText, null, input.createdBy, timestamp, timestamp);
+    (id, campaign_id, person_id, file_name, mime_type, source_type, legal_basis, storage_path, content_hash, extracted_text, status,
+     quality_score, quality_grade, quality_reasons_json, quality_metrics_json, graph_eligible, search_eligible, quality_assessed_at,
+     parse_version, error_message, retention_until, created_by, created_at, updated_at, analyzed_at,
+     source_search_task_id, source_strategy_version_id, experiment_assignment_id)
+    VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, '', '', ?, ?, ?, ?, NULL, ?, ?, ?)`)
+    .run(id, input.campaignId, input.fileName, input.mimeType, input.sourceType, input.legalBasis.trim(), storagePath, contentHash, extractedText,
+      initialStatus, quality.score, quality.grade, JSON.stringify(quality.reasons), JSON.stringify(quality.metrics), timestamp, null, input.createdBy, timestamp, timestamp,
+      input.sourceSearchTaskId || null, input.sourceStrategyVersionId || null, input.experimentAssignmentId || null);
+  recordActivityEvent({
+    campaignId: input.campaignId,
+    resumeId: id,
+    searchTaskId: input.sourceSearchTaskId || null,
+    strategyVersionId: input.sourceStrategyVersionId || null,
+    experimentAssignmentId: input.experimentAssignmentId || null,
+    eventType: "RESUME_IMPORTED",
+    reasonCode: quality.grade === "QUARANTINED" ? "QUALITY_PREFLIGHT_QUARANTINED" : "AUTHORIZED_IMPORT",
+    actorType: input.sourceType === "BOSS_VISIBLE_SCREENSHOT" ? "PLUGIN" : "USER",
+    actorId: input.createdBy,
+    payload: { sourceType: input.sourceType, qualityScore: quality.score, qualityGrade: quality.grade },
+    occurredAt: timestamp,
+    idempotencyKey: `resume-imported:${id}`,
+  });
   return { resume: getResume(id)!, duplicate: false };
 }
 
@@ -150,7 +198,58 @@ export function getPendingResumeIds(campaignId?: string, resumeIds?: string[]) {
     return (db.prepare(`SELECT id FROM resume_documents WHERE id IN (${placeholders}) ORDER BY created_at`).all(...resumeIds) as Array<{ id: string }>).map((row) => row.id);
   }
   if (campaignId) {
-    return (db.prepare("SELECT id FROM resume_documents WHERE campaign_id = ? AND (status IN ('PENDING','FAILED','NEEDS_REVIEW') OR analyzed_at IS NULL OR updated_at > analyzed_at) ORDER BY CASE status WHEN 'PENDING' THEN 0 ELSE 1 END, created_at").all(campaignId) as Array<{ id: string }>).map((row) => row.id);
+    return (db.prepare(`SELECT rd.id FROM resume_documents rd WHERE rd.campaign_id = ?
+      AND rd.status <> 'QUARANTINED'
+      AND (rd.status IN ('PENDING','FAILED') OR rd.analyzed_at IS NULL OR rd.updated_at > rd.analyzed_at)
+      AND NOT EXISTS (SELECT 1 FROM campaign_people cp WHERE cp.campaign_id = rd.campaign_id AND cp.person_id = rd.person_id AND cp.status NOT IN ('PENDING_REVIEW','NEEDS_RESEARCH'))
+      ORDER BY CASE rd.status WHEN 'PENDING' THEN 0 ELSE 1 END, rd.created_at`).all(campaignId) as Array<{ id: string }>).map((row) => row.id);
   }
-  return (db.prepare("SELECT id FROM resume_documents WHERE status IN ('PENDING','FAILED','NEEDS_REVIEW') OR analyzed_at IS NULL OR updated_at > analyzed_at ORDER BY CASE status WHEN 'PENDING' THEN 0 ELSE 1 END, created_at").all() as Array<{ id: string }>).map((row) => row.id);
+  return (db.prepare(`SELECT rd.id FROM resume_documents rd
+    WHERE rd.status <> 'QUARANTINED' AND (rd.status IN ('PENDING','FAILED') OR rd.analyzed_at IS NULL OR rd.updated_at > rd.analyzed_at)
+    AND NOT EXISTS (SELECT 1 FROM campaign_people cp WHERE cp.campaign_id = rd.campaign_id AND cp.person_id = rd.person_id AND cp.status NOT IN ('PENDING_REVIEW','NEEDS_RESEARCH'))
+    ORDER BY CASE rd.status WHEN 'PENDING' THEN 0 ELSE 1 END, rd.created_at`).all() as Array<{ id: string }>).map((row) => row.id);
+}
+
+export function latestResumeQualityReview(resumeId: string) {
+  const row = db.prepare(`SELECT decision, note, actor_id, created_at FROM resume_quality_reviews
+    WHERE resume_id = ? ORDER BY created_at DESC LIMIT 1`).get(resumeId) as Row | undefined;
+  return row ? {
+    decision: String(row.decision) as "RESTORED" | "CONFIRMED",
+    note: String(row.note || ""),
+    actorId: String(row.actor_id),
+    createdAt: String(row.created_at),
+  } : null;
+}
+
+export function isResumeQualityRestored(resumeId: string) {
+  return latestResumeQualityReview(resumeId)?.decision === "RESTORED";
+}
+
+export function reviewResumeQuality(input: { resumeId: string; decision: "RESTORED" | "CONFIRMED"; note?: string; actorId: string }) {
+  const resume = db.prepare("SELECT id, campaign_id, status FROM resume_documents WHERE id = ?").get(input.resumeId) as Row | undefined;
+  if (!resume) throw new Error("简历不存在");
+  if (resume.status !== "QUARANTINED") throw new Error("仅质量隔离中的简历可以执行此复核");
+  const timestamp = now();
+  const reviewId = randomUUID();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare(`INSERT INTO resume_quality_reviews (id, resume_id, campaign_id, decision, note, actor_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(reviewId, input.resumeId, String(resume.campaign_id), input.decision, input.note?.trim().slice(0, 500) || "", input.actorId, timestamp);
+    if (input.decision === "RESTORED") {
+      db.prepare("UPDATE resume_documents SET status = 'PENDING', updated_at = ?, error_message = '' WHERE id = ?").run(timestamp, input.resumeId);
+    }
+    recordActivityEvent({
+      campaignId: String(resume.campaign_id), resumeId: input.resumeId,
+      eventType: input.decision === "RESTORED" ? "RESUME_QUALITY_RESTORED" : "RESUME_QUARANTINE_CONFIRMED",
+      reasonCode: input.decision === "RESTORED" ? "HUMAN_FALSE_POSITIVE_REVIEW" : "HUMAN_QUARANTINE_CONFIRMED",
+      actorType: "USER", actorId: input.actorId, payload: { note: input.note?.trim().slice(0, 500) || "" },
+      occurredAt: timestamp, idempotencyKey: `resume-quality-review:${reviewId}`,
+    });
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return { id: reviewId, resumeId: input.resumeId, decision: input.decision, status: input.decision === "RESTORED" ? "PENDING" : "QUARANTINED", createdAt: timestamp };
 }

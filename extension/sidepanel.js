@@ -1,4 +1,5 @@
 const DEFAULT_BACKENDS = ["http://localhost:3000"];
+const SUPPORTED_BACKEND_VERSION = "0.7.1";
 const OPEN_STATUSES = "NEW,CLAIMED,IN_PROGRESS,DEFERRED";
 const LEGACY_CAPTURE_SESSION_KEY = "resumeCaptureDraftV1";
 const SCAN_MAX_DURATION_MS = 60_000;
@@ -7,8 +8,8 @@ const MAX_UPLOAD_FRAMES = 10;
 const { selectKeyframes } = globalThis.HuntingScanUtils;
 const reviewFixtures = globalThis.HuntingReviewMode;
 const REVIEW_CAPTURE_BASIS = "Chrome Web Store 审核演示，仅处理插件内置合成候选人数据";
-const emptyScanner = () => ({ scanId: "", status: "idle", mode: "", tabId: null, windowId: null, pageUrl: "", synthetic: false, campaignId: "", legalBasis: "", startedAt: 0, frames: [], processingFrames: [], setupPreview: null, selectedFrameId: "", previewPinned: false, lastFingerprint: null, currentSample: null, capturePending: false, uiTimer: null, stopTimer: null, stream: null, video: null, processed: 0, processingTotal: 0, failure: "" });
-const state = { backend: DEFAULT_BACKENDS[0], token: "", email: "", reviewMode: false, health: null, tasks: [], campaigns: [], activeTask: null, candidates: [], feedbackTaskId: "", scanner: emptyScanner() };
+const emptyScanner = () => ({ scanId: "", status: "idle", mode: "", tabId: null, windowId: null, pageUrl: "", synthetic: false, campaignId: "", legalBasis: "", searchTaskId: "", strategyVersionId: "", experimentAssignmentId: "", startedAt: 0, frames: [], processingFrames: [], setupPreview: null, selectedFrameId: "", previewPinned: false, lastFingerprint: null, currentSample: null, capturePending: false, uiTimer: null, stopTimer: null, stream: null, video: null, processed: 0, processingTotal: 0, failure: "" });
+const state = { backend: DEFAULT_BACKENDS[0], token: "", email: "", sourceWindowId: null, sourceTabId: null, sourceTabUrl: "", reviewMode: false, health: null, tasks: [], campaigns: [], activeTask: null, candidates: [], feedbackTaskId: "", scanner: emptyScanner() };
 const byId = (id) => document.getElementById(id);
 
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]); }
@@ -39,7 +40,7 @@ async function fetchWithTimeout(url, options = {}, timeout = 2500) {
 
 async function probeBackend(candidate) {
   const backend = normalizeBackend(candidate); if (!backend) return null;
-  try { const response = await fetchWithTimeout(`${backend}/api/plugin/health`, { cache: "no-store" }); const result = await response.json(); return response.ok && result.data?.ready && result.data.version === chrome.runtime.getManifest().version ? { backend, health: result.data } : null; } catch { return null; }
+  try { const response = await fetchWithTimeout(`${backend}/api/plugin/health`, { cache: "no-store" }); const result = await response.json(); return response.ok && result.data?.ready && result.data.version === SUPPORTED_BACKEND_VERSION ? { backend, health: result.data } : null; } catch { return null; }
 }
 
 async function discoverBackend() {
@@ -119,7 +120,7 @@ async function loadCampaigns() {
 }
 
 const statusLabels = { NEW: "新任务", CLAIMED: "已领取", IN_PROGRESS: "执行中", DEFERRED: "已延期" };
-function searchPhrase(task) { return [task.companyName, ...(task.query?.keywords || []).slice(0, 2), ...(task.query?.locations || []).slice(0, 1)].filter(Boolean).join(" "); }
+function searchPhrase(task) { return [task.companyName, ...(task.query?.keywords || []).slice(0, 1)].filter(Boolean).join(" "); }
 function renderTasks() {
   byId("task-count").textContent = state.reviewMode ? `共 ${state.tasks.length} 个合成任务` : `共 ${state.tasks.length} 个开放任务`;
   if (!state.tasks.length) { byId("tasks").innerHTML = state.reviewMode ? '<div class="empty-state"><strong>审核演示已完成</strong><p>点击右上角刷新可重置合成任务，所有反馈只保留在当前会话。</p></div>' : '<div class="empty-state"><strong>暂无开放任务</strong><p>采集 BOSS 简历并等待增量学习生成下一轮搜索任务。</p></div>'; return; }
@@ -136,13 +137,23 @@ function renderTasks() {
 async function loadTasks() { byId("task-count").textContent = "正在载入…"; byId("tasks").innerHTML = '<div class="empty-state"><strong>正在同步任务</strong><p>请稍候</p></div>'; try { state.tasks = state.reviewMode ? reviewFixtures.createTasks() : await api(`/api/plugin/tasks?status=${OPEN_STATUSES}`); renderTasks(); } catch (error) { byId("task-count").textContent = "载入失败"; showToast(error.message, "error"); } }
 function taskById(id) { return state.tasks.find((task) => task.id === id); }
 async function transitionTask(task, status) { const updated = state.reviewMode ? { ...task, status } : await api(`/api/plugin/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify({ status }) }); Object.assign(task, updated); renderTasks(); return task; }
-async function ensureStarted(task) { if (task.status === "NEW" || task.status === "DEFERRED") await transitionTask(task, "CLAIMED"); if (task.status === "CLAIMED") await transitionTask(task, "IN_PROGRESS"); return task; }
+async function ensureStarted(task) { if (task.status === "NEW" || task.status === "DEFERRED") await transitionTask(task, "CLAIMED"); if (task.status === "CLAIMED") await transitionTask(task, "IN_PROGRESS"); state.activeTask = task; byId("capture-campaign").value = task.campaignId; return task; }
 async function claimTask(task) { await transitionTask(task, "CLAIMED"); showToast("任务已领取，可开始搜索"); }
 async function copyTask(task) { await ensureStarted(task); await navigator.clipboard.writeText(searchPhrase(task)); showToast("搜索词已复制"); }
-async function openBoss(task) { await ensureStarted(task); await chrome.tabs.create({ url: state.reviewMode ? chrome.runtime.getURL("synthetic.html") : "https://www.zhipin.com/web/geek/job" }); }
+function sourceTabOptions() { return Number.isInteger(state.sourceWindowId) ? { windowId: state.sourceWindowId } : {}; }
+async function openSourceTab(url) { return chrome.tabs.create({ ...sourceTabOptions(), url, active: true }); }
+async function openBoss(task) { await ensureStarted(task); await openSourceTab(state.reviewMode ? chrome.runtime.getURL("synthetic.html") : "https://www.zhipin.com/web/geek/job"); }
+function pageOrigin(value) { try { return new URL(value).origin; } catch { return ""; } }
+function hasCaptureInvocation(tab) { return Number.isInteger(state.sourceTabId) && state.sourceTabId === tab.id && pageOrigin(state.sourceTabUrl) === pageOrigin(tab.url); }
+function requireCaptureInvocation(tab, basis) {
+  state.scanner = { ...emptyScanner(), status: "authorizing", tabId: tab.id, windowId: tab.windowId, pageUrl: tab.url, synthetic: normalizedPageUrl(tab.url) === normalizedPageUrl(chrome.runtime.getURL("synthetic.html")), campaignId: basis.campaignId, legalBasis: basis.legalBasis, searchTaskId: basis.searchTaskId, strategyVersionId: basis.strategyVersionId, experimentAssignmentId: basis.experimentAssignmentId };
+  renderScanner();
+  showToast("请在当前候选人页面点击浏览器工具栏中的觅才助手图标，工具窗口会自动继续", "error");
+}
 
 function currentScreenshotTab() {
-  return chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+  const query = Number.isInteger(state.sourceWindowId) ? { active: true, windowId: state.sourceWindowId } : { active: true, currentWindow: true };
+  return chrome.tabs.query(query).then(([tab]) => {
     if (!tab?.url) throw new Error("无法读取当前标签页地址");
     const synthetic = normalizedPageUrl(tab.url) === normalizedPageUrl(chrome.runtime.getURL("synthetic.html")); let hostname = ""; try { hostname = new URL(tab.url).hostname; } catch {}
     const boss = tab.url.startsWith("https:") && (hostname === "zhipin.com" || hostname.endsWith(".zhipin.com"));
@@ -154,6 +165,7 @@ function currentScreenshotTab() {
 
 async function analyze(task) {
   await ensureStarted(task); const { tab, synthetic } = await currentScreenshotTab();
+  if (!hasCaptureInvocation(tab)) throw new Error("当前页面尚未获得 Chrome 捕获授权。请保持该页面为活动页，点击浏览器工具栏中的觅才助手图标后重试");
   const purpose = state.reviewMode ? "将截取当前可见的合成演示页，并在插件内存中生成固定审核结果；截图不会上传或保存。" : synthetic ? "合成页面将发送至 Sub2API 验证识别链路。" : "当前可见 BOSS 页面截图将发送至已配置的 Sub2API，用于本任务候选人匹配判断。";
   if (!window.confirm(`${purpose}\n\n截图不会由后台落盘，是否继续？`)) return;
   const imageDataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg", quality: 82 });
@@ -194,7 +206,8 @@ function validateCaptureBasis() {
   const legalBasis = byId("capture-legal-basis").value.trim();
   if (!campaignId) throw new Error("暂无可用人才画像");
   if (!legalBasis || !byId("capture-authorization").checked) throw new Error("请填写并确认当前招聘处理依据");
-  return { campaignId, legalBasis };
+  const task = state.activeTask?.campaignId === campaignId ? state.activeTask : null;
+  return { campaignId, legalBasis, searchTaskId: task?.id || "", strategyVersionId: task?.strategyVersionId || "", experimentAssignmentId: task?.experimentAssignmentId || "" };
 }
 
 function formatElapsed(milliseconds) {
@@ -260,15 +273,17 @@ function renderScanner() {
   const elapsed = scanner.startedAt ? Math.min(Date.now() - scanner.startedAt, SCAN_MAX_DURATION_MS) : 0;
   const states = state.reviewMode ? {
     idle: ["等待开始", "打开审核演示页并回到顶部", "点击开始后，每移动到一个位置点击一次“截取当前帧”。"],
+    authorizing: ["等待授权", "在当前演示页点击扩展图标", "Chrome 要求目标标签页由用户主动授权；点击后工具窗口会自动继续。"],
     starting: ["正在准备取景", "正在读取当前可见标签页", "若 Chrome 要求选择，请只选择当前合成演示标签页。"],
     scanning: [scanner.capturePending ? "正在截图" : "等待截取", scanner.capturePending ? "正在截取当前画面" : "滚动到目标位置后点击截取", scanner.capturePending ? "截图完成前请保持当前页面不变。" : "每点击一次“截取当前帧”保存一帧，到达底部后完成识别。"],
     processing: [`本地演示 ${scanner.processed}/${scanner.processingTotal}`, "正在生成合成结构化结果", "不会连接后台、Sub2API 或写入简历库。"],
     failed: ["需要处理", "本次演示未完成", scanner.failure || "可重新识别内存中的关键帧，或取消后重新扫描。"],
   } : {
     idle: ["等待开始", "先回到简历顶部", "点击开始后，每移动到一个位置点击一次“截取当前帧”。"],
+    authorizing: ["等待授权", "在当前候选人页点击扩展图标", "点击浏览器工具栏中的觅才助手图标后，工具窗口会自动继续扫描。"],
     starting: ["正在准备取景", "正在读取当前可见标签页", "若 Chrome 要求选择，请只选择当前 BOSS 候选人详情标签页。"],
     scanning: [scanner.capturePending ? "正在截图" : "等待截取", scanner.capturePending ? "正在截取当前画面" : "滚动到目标位置后点击截取", scanner.capturePending ? "截图完成前请保持当前页面不变。" : "每点击一次“截取当前帧”保存一帧，到达底部后完成识别。"],
-    processing: [`正在识别 ${scanner.processed}/${scanner.processingTotal}`, "正在提取履历事实", "请保持侧边栏打开，完成后会自动合并并永久入库。"],
+    processing: [`正在识别 ${scanner.processed}/${scanner.processingTotal}`, "正在提取履历事实", "请保持工具窗口打开，完成后会自动合并并永久入库。"],
     failed: ["需要处理", "本次识别未完成", scanner.failure || "可重新识别内存中的关键帧，或取消后重新扫描。"],
   };
   const [statusLabel, title, detail] = states[scanner.status] || states.idle;
@@ -283,7 +298,7 @@ function renderScanner() {
   const displayedFrames = scanner.status === "processing" ? scanner.processingTotal : Math.min(scanner.frames.length, MAX_UPLOAD_FRAMES);
   byId("scan-frame-strip").innerHTML = Array.from({ length: MAX_UPLOAD_FRAMES }, (_, index) => `<span class="${index < displayedFrames ? (scanner.status === "processing" && index >= scanner.processed ? "processing" : "captured") : ""}"></span>`).join("");
   renderScannerPreview(scanner);
-  const locked = ["starting", "scanning", "processing", "failed"].includes(scanner.status);
+  const locked = ["authorizing", "starting", "scanning", "processing", "failed"].includes(scanner.status);
   byId("capture-campaign").disabled = locked;
   byId("capture-legal-basis").disabled = locked;
   byId("capture-authorization").disabled = locked;
@@ -293,7 +308,7 @@ function renderScanner() {
   byId("scan-capture").textContent = scanner.capturePending ? "正在截图…" : "截取当前帧";
   byId("scan-stop").disabled = scanner.frames.length === 0 || scanner.capturePending;
   byId("scan-retry").hidden = scanner.status !== "failed" || scanner.frames.length === 0;
-  byId("scan-cancel").hidden = !["starting", "scanning", "failed"].includes(scanner.status);
+  byId("scan-cancel").hidden = !["authorizing", "starting", "scanning", "failed"].includes(scanner.status);
 }
 
 function stopScanRuntime() {
@@ -429,16 +444,18 @@ async function startResumeScan() {
   let scanId = "";
   try {
     const basis = validateCaptureBasis(); const { tab, synthetic, boss } = await currentScreenshotTab();
+    if (!hasCaptureInvocation(tab)) return requireCaptureInvocation(tab, basis);
     if (boss && !window.confirm("插件将在本次扫描中临时捕获当前可见的 BOSS 简历画面。你完成滚动后，最多 10 张关键帧会发送至已配置的 Sub2API，用于提取履历并永久入库；图片不会落盘。是否开始？")) return;
     byId("capture-result").hidden = true;
     scanId = crypto.randomUUID();
-    state.scanner = { ...emptyScanner(), scanId, status: "starting", tabId: tab.id, windowId: tab.windowId, pageUrl: tab.url, synthetic, campaignId: basis.campaignId, legalBasis: basis.legalBasis };
+    state.scanner = { ...emptyScanner(), scanId, status: "starting", tabId: tab.id, windowId: tab.windowId, pageUrl: tab.url, synthetic, campaignId: basis.campaignId, legalBasis: basis.legalBasis, searchTaskId: basis.searchTaskId, strategyVersionId: basis.strategyVersionId, experimentAssignmentId: basis.experimentAssignmentId };
     renderScanner();
     let firstFrame;
     try {
       firstFrame = await startTargetTabCapture(state.scanner);
     } catch (error) {
-      throw new Error(`无法捕获当前候选人标签页：${error?.message || "Chrome 未授予标签页捕获权限"}。请保持候选人详情页为当前活动标签页，重新打开插件后再试`);
+      if (String(error?.message || "").includes("Extension has not been invoked")) return requireCaptureInvocation(tab, basis);
+      throw new Error(`无法捕获当前候选人标签页：${error?.message || "Chrome 未授予标签页捕获权限"}。请保持候选人详情页为活动页，点击浏览器工具栏中的觅才助手图标后重试`);
     }
     if (state.scanner.scanId !== scanId) return;
     state.scanner.status = "scanning"; state.scanner.startedAt = Date.now(); state.scanner.setupPreview = firstFrame; renderScanner();
@@ -493,7 +510,7 @@ async function processScanFrames() {
     throw new Error(`所有关键帧均未识别为候选人简历详情：${reason}。请核对首帧预览确实是当前 BOSS 候选人详情页，并从简历顶部重新扫描`);
   }
   if (segments.length < Math.max(1, Math.ceil(frames.length / 2))) throw new Error("超过一半关键帧识别失败，请检查页面位置后重新扫描");
-  const result = await api("/api/plugin/resume-capture/finalize", { method: "POST", body: JSON.stringify({ campaignId: scanner.campaignId, legalBasis: scanner.legalBasis, authorizationConfirmed: true, segments }) });
+  const result = await api("/api/plugin/resume-capture/finalize", { method: "POST", body: JSON.stringify({ campaignId: scanner.campaignId, legalBasis: scanner.legalBasis, searchTaskId: scanner.searchTaskId, strategyVersionId: scanner.strategyVersionId, experimentAssignmentId: scanner.experimentAssignmentId, authorizationConfirmed: true, segments }) });
   const learning = result.duplicate ? "简历库中已有相同内容，未重复创建。" : `已加入增量学习队列 ${result.aiRun.id.slice(0, 8)}。`;
   const warning = skipped.length ? `有 ${skipped.length} 帧未采用，可在简历库核对结果。` : "";
   byId("capture-result").textContent = `${result.resume.fileName} 已永久入库，共合并 ${result.merged.screenCount} 个关键帧。${learning}${warning}`; byId("capture-result").hidden = false;
@@ -528,16 +545,24 @@ function renderHealth() {
   byId("settings-ai-status").textContent = state.reviewMode ? "本地合成结果" : state.health?.ai.enabled && state.health?.ai.hasApiKey ? `${state.health.ai.model} · 已启用` : "未配置或未启用";
   byId("settings-screen-status").textContent = state.reviewMode ? "仅限内置演示页" : state.health?.ai.screenAnalysisEnabled ? "已启用" : "未启用";
 }
-function switchView(view) { if (["starting", "scanning", "processing"].includes(state.scanner.status) && view !== "capture") return showToast("请先完成或取消当前简历扫描", "error"); document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.view === view)); document.querySelectorAll(".view").forEach((panel) => { panel.hidden = panel.id !== `${view}-view`; }); }
+function switchView(view) { if (["authorizing", "starting", "scanning", "processing"].includes(state.scanner.status) && view !== "capture") return showToast("请先完成或取消当前简历扫描", "error"); document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.view === view)); document.querySelectorAll(".view").forEach((panel) => { panel.hidden = panel.id !== `${view}-view`; }); }
 async function saveBackend() { if (!await discoverBackend()) return showToast("localhost:3000 没有可用的觅才后台", "error"); byId("backend").value = state.backend; showToast("后台连接正常"); }
-async function restore() { const saved = await chrome.storage.local.get(["token", "email", "reviewMode"]); if (saved.reviewMode) return enterReviewMode(false); state.token = saved.token || ""; state.email = saved.email || ""; byId("email").value = state.email; const connected = await discoverBackend(); if (state.reviewMode) return; if (!state.token || !connected) return showWorkspace(false); showWorkspace(true); await loadWorkspace(); }
+async function restore() { const [saved, source] = await Promise.all([chrome.storage.local.get(["token", "email", "reviewMode"]), chrome.storage.session.get(["sourceWindowId", "sourceTabId", "sourceTabUrl"])]); state.sourceWindowId = Number.isInteger(source.sourceWindowId) ? source.sourceWindowId : null; state.sourceTabId = Number.isInteger(source.sourceTabId) ? source.sourceTabId : null; state.sourceTabUrl = source.sourceTabUrl || ""; if (saved.reviewMode) return enterReviewMode(false); state.token = saved.token || ""; state.email = saved.email || ""; byId("email").value = state.email; const connected = await discoverBackend(); if (state.reviewMode) return; if (!state.token || !connected) return showWorkspace(false); showWorkspace(true); await loadWorkspace(); }
+function applySourceContext(message) {
+  if (message?.type !== "HUNTING_SOURCE_CONTEXT" || !Number.isInteger(message.windowId)) return;
+  state.sourceWindowId = message.windowId; state.sourceTabId = Number.isInteger(message.tabId) ? message.tabId : null; state.sourceTabUrl = message.url || "";
+  if (state.scanner.status !== "authorizing") return;
+  if (state.sourceTabId !== state.scanner.tabId || pageOrigin(state.sourceTabUrl) !== pageOrigin(state.scanner.pageUrl)) return showToast("请在刚才的候选人页面点击觅才助手图标", "error");
+  state.scanner = emptyScanner(); renderScanner(); window.setTimeout(startResumeScan, 0);
+}
 
-byId("probe").addEventListener("click", discoverBackend); byId("login").addEventListener("click", login); byId("review-login").addEventListener("click", () => enterReviewMode(true)); byId("logout").addEventListener("click", () => signOut()); byId("refresh").addEventListener("click", loadTasks); byId("close-analysis").addEventListener("click", () => { byId("analysis").hidden = true; }); byId("save-backend").addEventListener("click", saveBackend); byId("open-synthetic").addEventListener("click", () => chrome.tabs.create({ url: chrome.runtime.getURL("synthetic.html") })); byId("scan-start").addEventListener("click", startResumeScan); byId("scan-capture").addEventListener("click", captureCurrentFrame); byId("scan-stop").addEventListener("click", () => finishResumeScan(false)); byId("scan-retry").addEventListener("click", retryScanRecognition); byId("scan-cancel").addEventListener("click", cancelResumeScan); byId("feedback-form").addEventListener("submit", submitFeedback);
+byId("probe").addEventListener("click", discoverBackend); byId("login").addEventListener("click", login); byId("review-login").addEventListener("click", () => enterReviewMode(true)); byId("logout").addEventListener("click", () => signOut()); byId("refresh").addEventListener("click", loadTasks); byId("close-analysis").addEventListener("click", () => { byId("analysis").hidden = true; }); byId("save-backend").addEventListener("click", saveBackend); byId("open-synthetic").addEventListener("click", () => openSourceTab(chrome.runtime.getURL("synthetic.html"))); byId("scan-start").addEventListener("click", startResumeScan); byId("scan-capture").addEventListener("click", captureCurrentFrame); byId("scan-stop").addEventListener("click", () => finishResumeScan(false)); byId("scan-retry").addEventListener("click", retryScanRecognition); byId("scan-cancel").addEventListener("click", cancelResumeScan); byId("feedback-form").addEventListener("submit", submitFeedback);
 byId("scan-preview-thumbnails").addEventListener("click", (event) => { const button = event.target.closest("[data-frame-id]"); if (button) selectScannerPreview(button.dataset.frameId); });
 document.querySelectorAll("[data-close-feedback]").forEach((button) => button.addEventListener("click", () => byId("feedback-dialog").close()));
 document.querySelector(".tabs").addEventListener("click", (event) => { const tab = event.target.closest("[data-view]"); if (tab) switchView(tab.dataset.view); });
 byId("tasks").addEventListener("click", async (event) => { const button = event.target.closest("button[data-action]"); if (!button) return; const task = taskById(button.dataset.id); if (!task) return; button.disabled = true; try { if (button.dataset.action === "claim") await claimTask(task); if (button.dataset.action === "copy") await copyTask(task); if (button.dataset.action === "open") await openBoss(task); if (button.dataset.action === "analyze") await analyze(task); if (button.dataset.action === "feedback") openFeedback(task); if (button.dataset.action === "defer") { await transitionTask(task, "DEFERRED"); showToast("任务已延期"); } } catch (error) { showToast(error.message, "error"); } finally { button.disabled = false; } });
 byId("analysis-content").addEventListener("click", async (event) => { const button = event.target.closest("button[data-action]"); if (!button) return; try { if (button.dataset.action === "greeting") await generateGreeting(Number(button.dataset.index), button); if (button.dataset.action === "copy-draft") { await navigator.clipboard.writeText(byId(`draft-${button.dataset.index}`).dataset.value); showToast("草稿已复制，请人工审核后发送"); } } catch (error) { showToast(error.message, "error"); } });
 window.addEventListener("unload", stopScanRuntime);
+chrome.runtime.onMessage.addListener(applySourceContext);
 
 restore();

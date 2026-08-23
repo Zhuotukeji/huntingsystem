@@ -3,7 +3,11 @@ export const campaignStatusLabels: Record<string, string> = {
 };
 
 export const organizationStatusLabels: Record<string, string> = {
-  PENDING_REVIEW: "待审核", APPROVED: "已批准", WATCHLIST: "观察", REJECTED: "已排除",
+  AI_LEARNED: "AI 已入库", WATCHLIST: "重点观察", REJECTED: "已排除",
+};
+
+export const organizationBusinessStatusLabels: Record<string, string> = {
+  GROWING: "增长中", STABLE: "相对稳定", TRANSFORMING: "转型调整", CONTRACTING: "可能收缩", UNKNOWN: "证据不足",
 };
 
 export { PERSON_STATUS_LABELS as personStatusLabels } from "@/lib/person-workflow";

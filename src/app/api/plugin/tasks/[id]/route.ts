@@ -6,7 +6,7 @@ import type { SearchTaskStatus } from "@/lib/types";
 export const runtime = "nodejs";
 export function OPTIONS() { return new Response(null, { status: 204, headers: pluginCorsHeaders }); }
 
-export async function PATCH(request: Request, context: RouteContext<"/api/plugin/tasks/[id]">) {
+export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const actor = requirePluginSession(request);
     const { id } = await context.params;

@@ -8,12 +8,14 @@
   },
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0",
-    "build": "next build",
+    "build": "next build && node scripts/prepare-standalone.mjs",
     "start": "next start --hostname 0.0.0.0",
     "lint": "eslint .",
     "test": "tsx --test tests/**/*.test.ts",
-    "worker": "tsx src/worker.ts",
+    "worker": "node --env-file-if-exists=.env.local --import tsx src/worker.ts",
     "db:reset": "tsx scripts/reset-db.ts",
+    "db:schema:postgres": "tsx scripts/generate-postgres-schema.ts",
+    "db:migrate:postgres": "tsx scripts/migrate-sqlite-to-postgres.ts",
     "extension:assets": "tsx scripts/generate-extension-icons.ts",
     "extension:check": "tsx scripts/extension-tool.ts check",
     "extension:pack": "tsx scripts/extension-tool.ts pack"
@@ -24,12 +26,14 @@
     "next": "16.2.2",
     "openai": "^6.33.0",
     "pdf-parse": "^2.4.5",
+    "pg": "8.16.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "eslint": "^9.39.0",

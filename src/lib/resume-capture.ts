@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { createAiRun } from "@/lib/learning";
 import { importResume } from "@/lib/resumes";
+import { recordActivityEvent } from "@/lib/autonomy";
 
 export type CapturedResumeSegment = {
   sequence: number;
@@ -134,6 +135,9 @@ export async function finalizeResumeCapture(input: {
   legalBasis: string;
   createdBy: string;
   segments: CapturedResumeSegment[];
+  searchTaskId?: string | null;
+  strategyVersionId?: string | null;
+  experimentAssignmentId?: string | null;
 }) {
   const merged = mergeResumeCaptureSegments(input.segments);
   const date = new Date().toISOString().slice(0, 10);
@@ -146,6 +150,22 @@ export async function finalizeResumeCapture(input: {
     legalBasis: input.legalBasis,
     createdBy: input.createdBy,
     rawText: merged.text,
+    sourceSearchTaskId: input.searchTaskId || null,
+    sourceStrategyVersionId: input.strategyVersionId || null,
+    experimentAssignmentId: input.experimentAssignmentId || null,
+  });
+  recordActivityEvent({
+    campaignId: input.campaignId,
+    resumeId: result.resume.id,
+    searchTaskId: input.searchTaskId || null,
+    strategyVersionId: input.strategyVersionId || null,
+    experimentAssignmentId: input.experimentAssignmentId || null,
+    eventType: "RESUME_SCANNED",
+    reasonCode: "BOSS_VISIBLE_SCREENSHOT",
+    actorType: "PLUGIN",
+    actorId: input.createdBy,
+    payload: { screenCount: merged.screenCount, duplicate: result.duplicate },
+    idempotencyKey: `resume-scanned:${result.resume.id}:${input.searchTaskId || "unattributed"}`,
   });
   const aiRun = result.duplicate ? null : createAiRun({
     campaignId: result.resume.campaignId,

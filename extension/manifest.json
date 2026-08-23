@@ -2,11 +2,11 @@
   "manifest_version": 3,
   "name": "觅才 BOSS 寻访助手",
   "short_name": "觅才助手",
-  "version": "0.6.10",
-  "version_name": "0.6.10",
+  "version": "0.7.2",
+  "version_name": "0.7.2",
   "minimum_chrome_version": "116",
   "description": "辅助 HR 手工执行 BOSS 搜索、可见页判断、反馈和简历关键帧扫描，并内置无后台商店审核演示。",
-  "permissions": ["activeTab", "storage", "sidePanel", "tabCapture", "tabs"],
+  "permissions": ["activeTab", "storage", "tabCapture", "tabs"],
   "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
   "externally_connectable": { "matches": ["http://localhost/*", "http://127.0.0.1/*"] },
   "background": { "service_worker": "background.js" },
@@ -20,6 +20,5 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "side_panel": { "default_path": "sidepanel.html" },
   "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'self'" }
 }

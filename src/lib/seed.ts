@@ -103,7 +103,7 @@ export function seedDatabase(force = false) {
   db.prepare(`INSERT INTO tasks
     (id, campaign_id, type, status, title, result_summary, payload_json, steps_json, attempts, max_attempts, model_name, estimated_cost, idempotency_key, created_at, completed_at)
     VALUES ('task-onboarding', ?, 'ONBOARDING', 'WAITING_HUMAN', '导入第一批授权简历', '当前公司与人才库为空；导入简历后运行一次 AI 学习即可生成图谱与 BOSS 搜索任务。', '{}', ?, 0, 3, 'system', 0, 'task-onboarding', ?, NULL)`)
-    .run(campaignId, JSON.stringify(["在简历库导入 PDF、DOCX、TXT 或结构化文本", "确认简历来源与处理依据", "在 AI 学习页面触发增量学习", "审核公司图谱并执行 BOSS 搜索任务"]), stamp);
+    .run(campaignId, JSON.stringify(["在简历库导入 PDF、DOCX、TXT 或结构化文本", "确认简历来源与处理依据", "在 AI 学习页面触发增量学习", "查看 AI 公司图谱并执行 BOSS 搜索任务"]), stamp);
 }
 
 removeLegacyDiscoverySamples();

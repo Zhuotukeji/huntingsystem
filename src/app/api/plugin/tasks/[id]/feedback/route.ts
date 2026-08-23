@@ -5,7 +5,7 @@ import { pluginCorsHeaders, pluginErrorStatus, requirePluginSession } from "@/li
 export const runtime = "nodejs";
 export function OPTIONS() { return new Response(null, { status: 204, headers: pluginCorsHeaders }); }
 
-export async function POST(request: Request, context: RouteContext<"/api/plugin/tasks/[id]/feedback">) {
+export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const actor = requirePluginSession(request);
     const { id } = await context.params;

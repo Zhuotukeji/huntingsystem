@@ -1,4 +1,4 @@
-import { FileCheck2, FileClock, FileText, ShieldCheck } from "lucide-react";
+import { CircleAlert, FileCheck2, FileClock, FileText } from "lucide-react";
 import { ResumeLibrary } from "@/components/resume-library";
 import { Metric, PageIntro } from "@/components/ui";
 import { listCampaigns } from "@/lib/repository";
@@ -14,14 +14,15 @@ export default async function ResumesPage({ searchParams }: { searchParams: Prom
   const campaigns = listCampaigns();
   const resumes = listResumeProfiles();
   const ready = resumes.filter((item) => item.status === "READY").length;
-  const pending = resumes.filter((item) => item.status !== "READY").length;
+  const pending = resumes.filter((item) => ["PENDING", "PROCESSING", "NEEDS_REVIEW", "FAILED"].includes(item.status)).length;
+  const quarantined = resumes.filter((item) => item.status === "QUARANTINED").length;
   return <>
     <PageIntro eyebrow="Resume Source of Truth" title="简历库" description="所有公司和人才关系从已授权简历中产生。导入时保留来源、处理依据、内容哈希和分析版本。" />
     <div className="metrics-grid">
       <Metric icon={FileText} label="简历总数" value={resumes.length} detail="按画像与内容哈希去重" />
       <Metric icon={FileCheck2} label="已入图谱" value={ready} detail="已生成任职与技能关系" tone="blue" />
-      <Metric icon={FileClock} label="待处理" value={pending} detail="午夜任务优先处理新增和变化" tone="amber" />
-      <Metric icon={ShieldCheck} label="保留规则" value="永久" detail="长期沉淀人才与公司知识" tone="purple" />
+      <Metric icon={FileClock} label="待判断" value={pending} detail="等待学习、补充或人工复核" tone="amber" />
+      <Metric icon={CircleAlert} label="质量隔离" value={quarantined} detail="不会进入人才、公司和关系图谱" tone="purple" />
     </div>
     <section className="section"><div className="section-head"><div><h3>候选人档案</h3><p>默认按最近更新显示；展开可查看任职、技能、来源和学习状态</p></div></div><ResumeLibrary key={initialQuery} resumes={resumes} campaigns={campaigns} initialQuery={initialQuery} canManage={hasPermission(user, "resumes.manage")} /></section>
   </>;

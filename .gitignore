@@ -1,9 +1,11 @@
 node_modules/
 .next/
+.next-*/
 out/
 .env
 .env.local
 .data/
+.runtime/
 *.log
 .DS_Store
 coverage/

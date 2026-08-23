@@ -6,7 +6,7 @@ import vm from "node:vm";
 const root = process.cwd();
 const extensionDirectory = join(root, "extension");
 const artifactDirectory = join(root, "artifacts");
-const expectedVersion = "0.6.10";
+const expectedVersion = "0.7.2";
 const artifactName = `hunting-extension-v${expectedVersion}.zip`;
 
 function crc32(buffer: Buffer) {
@@ -35,11 +35,11 @@ function check() {
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   assert(manifest.manifest_version === 3, "manifest_version must be 3");
   assert(manifest.version === expectedVersion, `manifest version must be ${expectedVersion}`);
-  assert(manifest.side_panel?.default_path === "sidepanel.html", "side panel entry is missing");
+  assert(!manifest.side_panel, "side_panel must not be declared; use the standalone workspace window");
   assert(!manifest.content_scripts, "content_scripts are prohibited");
   const permissions = new Set<string>(manifest.permissions || []);
-  for (const required of ["activeTab", "storage", "sidePanel", "tabCapture", "tabs"]) assert(permissions.has(required), `permission ${required} is required`);
-  for (const prohibited of ["cookies", "scripting", "webRequest", "debugger", "downloads", "history"]) assert(!permissions.has(prohibited), `permission ${prohibited} is prohibited`);
+  for (const required of ["activeTab", "storage", "tabCapture", "tabs"]) assert(permissions.has(required), `permission ${required} is required`);
+  for (const prohibited of ["sidePanel", "cookies", "scripting", "webRequest", "debugger", "downloads", "history"]) assert(!permissions.has(prohibited), `permission ${prohibited} is prohibited`);
   const hosts: string[] = manifest.host_permissions || [];
   assert(hosts.length === 2 && hosts.includes("http://localhost/*") && hosts.includes("http://127.0.0.1/*"), "host_permissions must be limited to local backend hosts");
   const externalMatches: string[] = manifest.externally_connectable?.matches || [];
@@ -52,11 +52,21 @@ function check() {
     assert(data.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex")), `icon${size}.png is not a PNG`);
     assert(data.readUInt32BE(16) === size && data.readUInt32BE(20) === size, `icon${size}.png dimensions are invalid`);
   }
-  for (const required of ["background.js", "sidepanel.html", "sidepanel.css", "capture.css", "scan-utils.js", "review-mode.js", "sidepanel.js", "synthetic.html", "synthetic.css", "README.md"]) assert(existsSync(join(extensionDirectory, required)), `${required} is missing`);
+  for (const required of ["background.js", "sidepanel.html", "sidepanel.css", "capture.css", "fallback.css", "scan-utils.js", "review-mode.js", "sidepanel.js", "synthetic.html", "synthetic.css", "README.md"]) assert(existsSync(join(extensionDirectory, required)), `${required} is missing`);
   for (const script of files(extensionDirectory).filter((path) => path.endsWith(".js"))) new vm.Script(readFileSync(script, "utf8"), { filename: relative(root, script) });
   const source = readFileSync(join(extensionDirectory, "sidepanel.js"), "utf8");
   const backgroundSource = readFileSync(join(extensionDirectory, "background.js"), "utf8");
   assert(backgroundSource.includes("onMessageExternal") && backgroundSource.includes("HUNTING_EXTENSION_PING"), "installation status handshake is missing");
+  assert(backgroundSource.includes("chrome.action.onClicked"), "extension action click handler is missing");
+  for (const required of ["chrome.windows.get", "chrome.windows.update", "chrome.windows.create", "chrome.storage.session", "workspaceWindowId"]) assert(backgroundSource.includes(required), `standalone workspace window flow is missing: ${required}`);
+  assert(!backgroundSource.includes("chrome.windows.getAll"), "workspace launch must not scan every Chrome window");
+  assert(backgroundSource.includes("chrome.tabs.create") && backgroundSource.includes("chrome.runtime.getURL(WORKSPACE_PATH)"), "workspace tab fallback is missing");
+  for (const prohibited of ["chrome.sidePanel", "setPanelBehavior", "side_panel"]) assert(!backgroundSource.includes(prohibited), `side panel implementation must not be reintroduced: ${prohibited}`);
+  assert(source.includes("state.sourceWindowId") && source.includes("{ active: true, windowId: state.sourceWindowId }"), "workspace actions must target the original Chrome window");
+  const searchPhraseSource = source.slice(source.indexOf("function searchPhrase"), source.indexOf("function renderTasks"));
+  assert(searchPhraseSource.includes("slice(0, 1)") && !searchPhraseSource.includes("locations"), "task copy must use one broad keyword without an inline location");
+  assert(source.includes("sourceTabId") && source.includes("sourceTabUrl") && source.includes('status: "authorizing"'), "capture authorization context or waiting state is missing");
+  assert(source.includes("HUNTING_SOURCE_CONTEXT") && source.includes("window.setTimeout(startResumeScan, 0)"), "capture must resume after the target tab action click");
   for (const prohibited of ["chrome.cookies", "chrome.scripting", "executeScript", "chrome.webRequest", "document.cookie"]) assert(!source.includes(prohibited), `prohibited API reference found: ${prohibited}`);
   assert(source.includes("captureVisibleTab") && source.includes("window.confirm"), "visible screenshot confirmation flow is missing");
   assert(source.includes("chrome.tabCapture.getMediaStreamId") && source.includes("targetTabId: tabId"), "resume scan must request a stream for the selected tab id");
@@ -103,7 +113,7 @@ function check() {
   for (const removed of ["capture-screen", "undo-capture", "finalize-capture"]) assert(!source.includes(removed), `manual multi-screen control is still present: ${removed}`);
   assert(source.includes("/api/plugin/resume-capture/segment") && source.includes("/api/plugin/resume-capture/finalize"), "multi-screen resume capture flow is incomplete");
   assert(source.includes('const DEFAULT_BACKENDS = ["http://localhost:3000"]'), "backend must only connect to localhost:3000");
-  assert(source.includes("result.data.version === chrome.runtime.getManifest().version"), "backend compatibility check is missing");
+  assert(source.includes('const SUPPORTED_BACKEND_VERSION = "0.7.1"') && source.includes("result.data.version === SUPPORTED_BACKEND_VERSION"), "backend compatibility check is missing");
   console.log(`Extension check passed: MV3 v${expectedVersion}, ${files(extensionDirectory).length} files`);
 }
 

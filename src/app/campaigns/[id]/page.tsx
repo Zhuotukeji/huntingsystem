@@ -18,7 +18,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
   const organizations = listOrganizations(id);
   const people = listPeople(id);
   const resumes = listResumes(id);
-  const approvedOrganizations = organizations.filter((item) => item.status === "APPROVED").length;
+  const learnedOrganizations = organizations.filter((item) => item.status !== "REJECTED").length;
   const readyPeople = people.filter((item) => ["READY_TO_CONTACT", "CONTACTED", "ENGAGED", "SCREENING", "CONVERTED", "INTERVIEWING", "OFFERED", "HIRED"].includes(item.status)).length;
   const talentPoolCount = people.filter((item) => item.status === "TALENT_POOL").length;
   const closedCount = people.filter((item) => ["CLOSED", "WITHDRAWN", "DO_NOT_CONTACT"].includes(item.status)).length;
@@ -29,7 +29,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
   const workflowSteps = [
     { label: "简历入库", detail: `${resumes.length} 份已授权资料`, href: "/resumes" },
     { label: "AI 分析", detail: `${resumes.filter((item) => item.status === "READY").length} 份已完成`, href: "/learning" },
-    { label: "公司审核", detail: `${approvedOrganizations} 已批准 · ${organizations.filter((item) => item.status === "PENDING_REVIEW").length} 待审`, href: `/organizations?campaignId=${id}` },
+    { label: "公司学习", detail: `${learnedOrganizations} 家已由 AI 自主入库`, href: `/organizations?campaignId=${id}` },
     { label: "人选审核", detail: `${readyPeople} 已通过 · ${people.filter((item) => ["PENDING_REVIEW", "NEEDS_RESEARCH"].includes(item.status)).length} 待判断`, href: `/people?campaignId=${id}&status=PENDING_REVIEW` },
     { label: "人才触达", detail: `${contactedCount} 人已联系`, href: `/people?campaignId=${id}&status=CONTACTED` },
     { label: "有效沟通", detail: `${engagedCount} 人完成有效沟通`, href: `/people?campaignId=${id}&status=ENGAGED` },
@@ -41,7 +41,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
     <PageIntro eyebrow="Active Campaign" title={campaign.name} description={campaign.roleName} actions={<><StatusBadge status={campaign.status} label={campaignStatusLabels[campaign.status]} />{hasPermission(user, "campaigns.manage") ? <CampaignStatusButton id={id} status={campaign.status} /> : null}</>} />
     <div className="campaign-summary">
       <div className="summary-block"><h3>业务目标</h3><p>{campaign.businessGoal}</p><h3>候选人价值主张</h3><p>{campaign.valueProposition}</p></div>
-      <div className="summary-block" style={{ padding: 0 }}><div className="mini-stat-grid"><div className="mini-stat"><strong>{organizations.length}</strong><span>已发现公司</span></div><div className="mini-stat"><strong>{approvedOrganizations}</strong><span>已批准公司</span></div><div className="mini-stat"><strong>{people.length}</strong><span>已发现人选</span></div><div className="mini-stat"><strong>{readyPeople}</strong><span>进入触达</span></div></div></div>
+      <div className="summary-block" style={{ padding: 0 }}><div className="mini-stat-grid"><div className="mini-stat"><strong>{organizations.length}</strong><span>已发现公司</span></div><div className="mini-stat"><strong>{learnedOrganizations}</strong><span>AI 已入库</span></div><div className="mini-stat"><strong>{people.length}</strong><span>已发现人选</span></div><div className="mini-stat"><strong>{readyPeople}</strong><span>进入触达</span></div></div></div>
     </div>
 
     <section className="section">
@@ -55,7 +55,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
     </section>
 
     <section className="section">
-      <div className="section-head"><div><h3>战役工作流</h3><p>AI 负责持续发现和补全证据；审核、联系、面试及录用均由团队人工推进</p></div></div>
+      <div className="section-head"><div><h3>战役工作流</h3><p>AI 负责公司自主入库和人选评分推进；联系、面试及录用由团队推进</p></div></div>
       <div className="workflow-rail">{workflowSteps.map((step, index) => <a href={step.href} key={step.label}><span>{index + 1}</span><div><strong>{step.label}</strong><small>{step.detail}</small></div></a>)}</div>
       <div className="toolbar" style={{ padding: 14 }}>
         <a className="button primary" href="/learning">运行图谱增量学习</a>
@@ -76,7 +76,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
     <section className="section">
       <div className="section-head"><div><h3>发现进度</h3><p>数据由授权简历学习并持续更新</p></div></div>
       <div className="panel">
-        <div className="data-row"><div className="row-icon"><Building2 size={18} /></div><div className="row-main"><strong>公司地图</strong><span>{organizations.filter((item) => item.status === "PENDING_REVIEW").length} 家等待审核 · 目标 {campaign.targetOrganizationCount} 家</span></div><a href={`/organizations?campaignId=${id}`} className="button small">审核公司</a></div>
+        <div className="data-row"><div className="row-icon"><Building2 size={18} /></div><div className="row-main"><strong>公司地图</strong><span>{learnedOrganizations} 家已自主入库 · 目标 {campaign.targetOrganizationCount} 家</span></div><a href={`/organizations?campaignId=${id}`} className="button small">查看公司</a></div>
         <div className="data-row"><div className="row-icon"><Users size={18} /></div><div className="row-main"><strong>人选队列</strong><span>{people.filter((item) => ["PENDING_REVIEW", "NEEDS_RESEARCH"].includes(item.status)).length} 人等待判断 · 目标 {campaign.targetPersonCount} 人</span></div><a href={`/people?campaignId=${id}`} className="button small">推进人选</a></div>
         <div className="data-row"><div className="row-icon"><Search size={18} /></div><div className="row-main"><strong>搜索范围</strong><span>{campaign.locations.join("、")} · {campaign.markets.join("、")} · {campaign.channels.join("、")}</span></div></div>
       </div>

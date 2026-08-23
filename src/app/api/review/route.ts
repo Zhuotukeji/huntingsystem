@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { reviewOrganizations, reviewPeople } from "@/lib/repository";
+import { reviewPeople, updateOrganizationStatus } from "@/lib/repository";
 import { authorizeApi } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     if ("response" in auth) return auth.response;
     const ids = Array.isArray(input.ids) ? input.ids.filter((id: unknown) => typeof id === "string").slice(0, 100) : [];
     if (!ids.length) return NextResponse.json({ error: "请选择记录" }, { status: 400 });
-    const count = input.entityType === "organization" ? reviewOrganizations(ids, input.status, input.reason) : reviewPeople(ids, input.status, input.reason, auth.user.name);
+    const count = input.entityType === "organization" ? updateOrganizationStatus(ids, input.status, input.reason) : reviewPeople(ids, input.status, input.reason, auth.user.name);
     return NextResponse.json({ data: { count } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "批量审核失败" }, { status: 400 });

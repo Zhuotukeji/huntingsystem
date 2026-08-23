@@ -1,21 +1,117 @@
 import { mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { PostgresSyncDatabase, type CompatibleDatabase } from "@/lib/postgres-sync";
+import { POSTGRES_SCHEMA_SQL } from "@/lib/postgres-schema.generated";
+import { applicationPath, configuredApplicationPath } from "@/lib/runtime-paths";
 
-const databasePath = process.env.DATABASE_PATH || join(process.cwd(), ".data", "hunting.db");
-mkdirSync(dirname(databasePath), { recursive: true });
+const databaseUrl = process.env.DATABASE_URL?.trim();
+const isProductionBuild = process.env.NEXT_PHASE === "phase-production-build" || process.env.npm_lifecycle_event === "build";
+if (!databaseUrl && process.env.NODE_ENV === "production" && !isProductionBuild) {
+  throw new Error("生产环境必须配置 DATABASE_URL 并使用 PostgreSQL。SQLite 仅用于本地开发、测试和迁移源。");
+}
 
-const globalDatabase = globalThis as typeof globalThis & { huntingDb?: DatabaseSync };
+export const databaseDialect = databaseUrl && !isProductionBuild ? "postgres" : "sqlite";
+const globalDatabase = globalThis as typeof globalThis & { huntingDb?: CompatibleDatabase };
 
-export const db = globalDatabase.huntingDb ?? new DatabaseSync(databasePath);
+function createDatabase(): CompatibleDatabase {
+  if (isProductionBuild) return new DatabaseSync(":memory:") as unknown as CompatibleDatabase;
+  if (databaseUrl) return new PostgresSyncDatabase(databaseUrl);
+  const databasePath = process.env.DATABASE_PATH ? configuredApplicationPath(process.env.DATABASE_PATH) : applicationPath(".data", "hunting.db");
+  mkdirSync(dirname(databasePath), { recursive: true });
+  return new DatabaseSync(databasePath) as unknown as CompatibleDatabase;
+}
+
+export const db: CompatibleDatabase = globalDatabase.huntingDb ?? createDatabase();
 
 if (process.env.NODE_ENV !== "production") {
   globalDatabase.huntingDb = db;
 }
 
-db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
+if (databaseDialect === "sqlite") {
+  db.exec("PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;");
+  const journalMode = db.prepare("PRAGMA journal_mode").get() as { journal_mode: string };
+  if (journalMode.journal_mode.toLowerCase() !== "wal") db.exec("PRAGMA journal_mode = WAL;");
+}
+
+function ensureColumn(table: string, column: string, definition: string) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (columns.some((item) => item.name === column)) return;
+  try {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
+  }
+}
+
+function parseStringArray(value: string) {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string" && Boolean(item.trim())) : [];
+  } catch {
+    return [];
+  }
+}
+
+function uniqueStrings(values: string[], limit = 30) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].slice(0, limit);
+}
+
+function inferBusinessStatus(currentBusiness: string[]) {
+  const text = currentBusiness.join(" ");
+  if (!text) return { status: "UNKNOWN", summary: "现有授权简历尚未提供当前业务证据，暂不判断经营状态。", confidence: 0 };
+  if (/(裁员|收缩|缩减|下滑|下降|亏损|停止|关停|流失率上升)/.test(text)) {
+    return { status: "CONTRACTING", summary: "当前简历出现业务收缩或经营承压信号，公司可能处于收缩阶段。", confidence: 55 };
+  }
+  if (/(转型|重组|业务调整|战略调整|转向|新业务线)/.test(text)) {
+    return { status: "TRANSFORMING", summary: "当前简历出现业务转型或组织调整信号，公司可能处于转型阶段。", confidence: 55 };
+  }
+  if (/(增长|提升|新增|扩张|扩大|规模化|突破|从0到1|流水峰值|收入目标|团队搭建)/.test(text)) {
+    return { status: "GROWING", summary: "当前简历出现业务扩张、收入提升或团队建设信号，公司可能处于增长阶段。", confidence: 60 };
+  }
+  if (/(稳定|维持|持续运营|成熟业务)/.test(text)) {
+    return { status: "STABLE", summary: "当前简历出现持续运营或指标稳定信号，公司业务可能相对稳定。", confidence: 55 };
+  }
+  return { status: "UNKNOWN", summary: "现有授权简历尚未提供足够的经营指标，暂不判断增长或收缩。", confidence: 0 };
+}
+
+function backfillOrganizationBusinessProfiles() {
+  const profiles = db.prepare(`SELECT id, campaign_id, organization_id, products_json, business_history_json, current_business_json, business_signals_json, business_status, business_status_summary, business_status_confidence
+    FROM campaign_organizations`).all() as Array<Record<string, string>>;
+  const update = db.prepare(`UPDATE campaign_organizations SET products_json = ?, business_history_json = ?, current_business_json = ?, business_signals_json = ?, business_status = ?, business_status_summary = ?, business_status_confidence = ? WHERE id = ?`);
+  for (const profile of profiles) {
+    const employments = db.prepare(`SELECT e.raw_title, e.start_date, e.end_date, e.is_current, e.summary
+      FROM employments e JOIN resume_documents r ON r.id = e.resume_id
+      WHERE e.organization_id = ? AND r.campaign_id = ? AND r.graph_eligible = 1 ORDER BY e.is_current DESC, e.start_date DESC`)
+      .all(profile.organization_id, profile.campaign_id) as Array<{ raw_title: string; start_date: string | null; end_date: string | null; is_current: number; summary: string }>;
+    const factRows = db.prepare(`SELECT f.value_json FROM organization_facts f
+      JOIN resume_documents r ON r.id = f.source_resume_id
+      WHERE f.organization_id = ? AND r.campaign_id = ? AND f.field_name = 'business_tags' AND f.status = 'PROMOTED_FACT'`)
+      .all(profile.organization_id, profile.campaign_id) as Array<{ value_json: string }>;
+    const products = uniqueStrings([...parseStringArray(profile.products_json), ...factRows.flatMap((row) => parseStringArray(row.value_json))]);
+    const employmentSummary = (employment: (typeof employments)[number]) => {
+      const period = [employment.start_date, employment.is_current ? "至今" : employment.end_date].filter(Boolean).join(" - ");
+      return [period, employment.raw_title, employment.summary].filter(Boolean).join(" · ");
+    };
+    const history = uniqueStrings([...parseStringArray(profile.business_history_json), ...employments.filter((item) => !item.is_current).map(employmentSummary)], 20);
+    const current = uniqueStrings([...parseStringArray(profile.current_business_json), ...employments.filter((item) => item.is_current).map(employmentSummary)], 20);
+    const signals = uniqueStrings([...parseStringArray(profile.business_signals_json), ...current], 12);
+    const inferred = inferBusinessStatus(current);
+    const hasModelAssessment = profile.business_status && profile.business_status !== "UNKNOWN" && Number(profile.business_status_confidence) > inferred.confidence;
+    const businessStatus = hasModelAssessment ? profile.business_status : inferred.status;
+    const statusSummary = hasModelAssessment ? profile.business_status_summary : inferred.summary;
+    const statusConfidence = hasModelAssessment ? Number(profile.business_status_confidence) : inferred.confidence;
+    update.run(JSON.stringify(products), JSON.stringify(history), JSON.stringify(current), JSON.stringify(signals), businessStatus, statusSummary, statusConfidence, profile.id);
+  }
+}
 
 export function initializeDatabase() {
+  if (databaseDialect === "postgres") {
+    // Next.js spawns multiple workers during builds. Schema changes belong to runtime startup
+    // and migration commands, not concurrent page-data collection.
+    if (!isProductionBuild) db.exec(POSTGRES_SCHEMA_SQL);
+    return;
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS campaigns (
       id TEXT PRIMARY KEY,
@@ -61,9 +157,17 @@ export function initializeDatabase() {
       markets_json TEXT NOT NULL,
       channels_json TEXT NOT NULL,
       monetization_json TEXT NOT NULL,
+      business_history_json TEXT NOT NULL DEFAULT '[]',
+      current_business_json TEXT NOT NULL DEFAULT '[]',
+      business_status TEXT NOT NULL DEFAULT 'UNKNOWN',
+      business_status_summary TEXT NOT NULL DEFAULT '',
+      business_signals_json TEXT NOT NULL DEFAULT '[]',
+      business_status_confidence INTEGER NOT NULL DEFAULT 0,
       fit_score INTEGER NOT NULL,
       evidence_coverage INTEGER NOT NULL,
       confidence INTEGER NOT NULL,
+      evidence_source_count INTEGER NOT NULL DEFAULT 0,
+      source_quality_score INTEGER NOT NULL DEFAULT 0,
       recommendation_reason TEXT NOT NULL,
       unknowns_json TEXT NOT NULL,
       owner_name TEXT NOT NULL,
@@ -184,6 +288,13 @@ export function initializeDatabase() {
       content_hash TEXT NOT NULL,
       extracted_text TEXT NOT NULL,
       status TEXT NOT NULL,
+      quality_score INTEGER NOT NULL DEFAULT 0,
+      quality_grade TEXT NOT NULL DEFAULT 'UNASSESSED',
+      quality_reasons_json TEXT NOT NULL DEFAULT '[]',
+      quality_metrics_json TEXT NOT NULL DEFAULT '{}',
+      graph_eligible INTEGER NOT NULL DEFAULT 0,
+      search_eligible INTEGER NOT NULL DEFAULT 0,
+      quality_assessed_at TEXT,
       parse_version TEXT NOT NULL DEFAULT '',
       error_message TEXT NOT NULL DEFAULT '',
       retention_until TEXT,
@@ -252,6 +363,9 @@ export function initializeDatabase() {
       confidence REAL NOT NULL,
       source_resume_id TEXT REFERENCES resume_documents(id) ON DELETE SET NULL,
       status TEXT NOT NULL,
+      classification TEXT NOT NULL DEFAULT 'FACT',
+      evidence_quote TEXT NOT NULL DEFAULT '',
+      source_quality_score INTEGER NOT NULL DEFAULT 0,
       first_seen_at TEXT NOT NULL,
       last_seen_at TEXT NOT NULL,
       UNIQUE(organization_id, field_name, value_json, source_resume_id)
@@ -429,6 +543,243 @@ export function initializeDatabase() {
       created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS strategy_versions (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      version INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      parent_version_id TEXT REFERENCES strategy_versions(id) ON DELETE SET NULL,
+      source_review_run_id TEXT,
+      strategy_json TEXT NOT NULL,
+      change_summary TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      activated_at TEXT,
+      superseded_at TEXT,
+      UNIQUE(campaign_id, version)
+    );
+
+    CREATE TABLE IF NOT EXISTS experiments (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      strategy_version_id TEXT REFERENCES strategy_versions(id) ON DELETE SET NULL,
+      name TEXT NOT NULL,
+      dimension TEXT NOT NULL,
+      status TEXT NOT NULL,
+      primary_metric TEXT NOT NULL,
+      allocation_percent INTEGER NOT NULL DEFAULT 20,
+      minimum_tasks INTEGER NOT NULL DEFAULT 5,
+      minimum_results INTEGER NOT NULL DEFAULT 30,
+      arms_json TEXT NOT NULL,
+      result_json TEXT NOT NULL DEFAULT '{}',
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      started_at TEXT,
+      completed_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS experiment_assignments (
+      id TEXT PRIMARY KEY,
+      experiment_id TEXT NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+      arm_key TEXT NOT NULL,
+      search_task_id TEXT,
+      person_id TEXT REFERENCES people(id) ON DELETE SET NULL,
+      assigned_at TEXT NOT NULL,
+      UNIQUE(experiment_id, search_task_id, person_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS review_runs (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT REFERENCES campaigns(id) ON DELETE CASCADE,
+      review_type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      window_start TEXT NOT NULL,
+      window_end TEXT NOT NULL,
+      metrics_json TEXT NOT NULL,
+      diagnosis_json TEXT NOT NULL,
+      proposed_changes_json TEXT NOT NULL,
+      applied_changes_json TEXT NOT NULL,
+      confidence REAL NOT NULL DEFAULT 0,
+      model_name TEXT NOT NULL,
+      estimated_cost REAL NOT NULL DEFAULT 0,
+      error_message TEXT NOT NULL DEFAULT '',
+      triggered_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      completed_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS intelligence_sources (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+      source_type TEXT NOT NULL,
+      trust_tier TEXT NOT NULL,
+      title TEXT NOT NULL,
+      url TEXT NOT NULL,
+      publisher TEXT NOT NULL,
+      published_at TEXT,
+      quote TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      collected_at TEXT NOT NULL,
+      UNIQUE(url, content_hash)
+    );
+
+    CREATE TABLE IF NOT EXISTS evidence_claims (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+      subject_type TEXT NOT NULL,
+      subject_id TEXT NOT NULL,
+      claim_type TEXT NOT NULL,
+      classification TEXT NOT NULL,
+      statement TEXT NOT NULL,
+      value_json TEXT NOT NULL,
+      confidence INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      valid_from TEXT,
+      valid_until TEXT,
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      conflict_group_key TEXT NOT NULL DEFAULT '',
+      UNIQUE(subject_type, subject_id, claim_type, statement)
+    );
+
+    CREATE TABLE IF NOT EXISTS claim_sources (
+      claim_id TEXT NOT NULL REFERENCES evidence_claims(id) ON DELETE CASCADE,
+      source_id TEXT NOT NULL REFERENCES intelligence_sources(id) ON DELETE CASCADE,
+      PRIMARY KEY (claim_id, source_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS business_units (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      unit_type TEXT NOT NULL,
+      description TEXT NOT NULL,
+      status TEXT NOT NULL,
+      confidence INTEGER NOT NULL,
+      valid_from TEXT,
+      valid_until TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(organization_id, name)
+    );
+
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      business_unit_id TEXT REFERENCES business_units(id) ON DELETE SET NULL,
+      name TEXT NOT NULL,
+      project_type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      region TEXT NOT NULL,
+      client_name TEXT NOT NULL,
+      products_json TEXT NOT NULL,
+      skills_json TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      confidence INTEGER NOT NULL,
+      talent_demand_confidence INTEGER NOT NULL DEFAULT 0,
+      started_at TEXT,
+      ended_at TEXT,
+      valid_until TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(organization_id, name, project_type)
+    );
+
+    CREATE TABLE IF NOT EXISTS project_claims (
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      claim_id TEXT NOT NULL REFERENCES evidence_claims(id) ON DELETE CASCADE,
+      PRIMARY KEY (project_id, claim_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS organization_events (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      classification TEXT NOT NULL,
+      confidence INTEGER NOT NULL,
+      occurred_at TEXT,
+      valid_until TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS research_tasks (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT REFERENCES campaigns(id) ON DELETE CASCADE,
+      organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+      topic TEXT NOT NULL,
+      trigger_type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      result_summary TEXT NOT NULL DEFAULT '',
+      error_message TEXT NOT NULL DEFAULT '',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      model_name TEXT NOT NULL DEFAULT '',
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      started_at TEXT,
+      completed_at TEXT,
+      dedupe_key TEXT NOT NULL UNIQUE
+    );
+
+    CREATE TABLE IF NOT EXISTS activity_events (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT REFERENCES campaigns(id) ON DELETE CASCADE,
+      person_id TEXT REFERENCES people(id) ON DELETE SET NULL,
+      organization_id TEXT REFERENCES organizations(id) ON DELETE SET NULL,
+      resume_id TEXT REFERENCES resume_documents(id) ON DELETE SET NULL,
+      search_task_id TEXT REFERENCES search_tasks(id) ON DELETE SET NULL,
+      strategy_version_id TEXT REFERENCES strategy_versions(id) ON DELETE SET NULL,
+      experiment_assignment_id TEXT REFERENCES experiment_assignments(id) ON DELETE SET NULL,
+      event_type TEXT NOT NULL,
+      from_status TEXT,
+      to_status TEXT,
+      reason_code TEXT NOT NULL,
+      actor_type TEXT NOT NULL,
+      actor_id TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      occurred_at TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL UNIQUE
+    );
+
+    CREATE TABLE IF NOT EXISTS candidate_origins (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      person_id TEXT NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+      resume_id TEXT REFERENCES resume_documents(id) ON DELETE SET NULL,
+      search_task_id TEXT REFERENCES search_tasks(id) ON DELETE SET NULL,
+      organization_id TEXT REFERENCES organizations(id) ON DELETE SET NULL,
+      strategy_version_id TEXT REFERENCES strategy_versions(id) ON DELETE SET NULL,
+      experiment_assignment_id TEXT REFERENCES experiment_assignments(id) ON DELETE SET NULL,
+      keyword_json TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      dedupe_key TEXT NOT NULL UNIQUE,
+      UNIQUE(campaign_id, person_id, resume_id, search_task_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS analytics_snapshots (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      business_date TEXT NOT NULL,
+      window_days INTEGER NOT NULL,
+      metrics_json TEXT NOT NULL,
+      dimensions_json TEXT NOT NULL,
+      data_quality_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(campaign_id, business_date, window_days)
+    );
+
+    CREATE TABLE IF NOT EXISTS resume_quality_reviews (
+      id TEXT PRIMARY KEY,
+      resume_id TEXT NOT NULL REFERENCES resume_documents(id) ON DELETE CASCADE,
+      campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      decision TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      actor_id TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_campaign_org_status ON campaign_organizations(campaign_id, status);
     CREATE INDEX IF NOT EXISTS idx_campaign_person_status ON campaign_people(campaign_id, status);
     CREATE INDEX IF NOT EXISTS idx_evidence_entity ON evidence(entity_type, entity_id);
@@ -445,7 +796,54 @@ export function initializeDatabase() {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_search_feedback_task ON search_task_feedback(task_id);
     CREATE INDEX IF NOT EXISTS idx_users_status ON users(status, email);
     CREATE INDEX IF NOT EXISTS idx_web_sessions_user ON web_sessions(user_id, expires_at);
+    CREATE INDEX IF NOT EXISTS idx_activity_campaign_time ON activity_events(campaign_id, occurred_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_activity_person_time ON activity_events(person_id, occurred_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_candidate_origins_person ON candidate_origins(campaign_id, person_id);
+    CREATE INDEX IF NOT EXISTS idx_strategy_campaign_status ON strategy_versions(campaign_id, status, version DESC);
+    CREATE INDEX IF NOT EXISTS idx_reviews_campaign_time ON review_runs(campaign_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_research_status ON research_tasks(status, created_at);
+    CREATE INDEX IF NOT EXISTS idx_claim_subject ON evidence_claims(subject_type, subject_id, status);
+    CREATE INDEX IF NOT EXISTS idx_projects_org ON projects(organization_id, status, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_analytics_campaign_window ON analytics_snapshots(campaign_id, window_days, business_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_resume_quality_reviews_resume ON resume_quality_reviews(resume_id, created_at DESC);
   `);
+  ensureColumn("campaign_organizations", "business_history_json", "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn("campaign_organizations", "current_business_json", "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn("campaign_organizations", "business_status", "TEXT NOT NULL DEFAULT 'UNKNOWN'");
+  ensureColumn("campaign_organizations", "business_status_summary", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("campaign_organizations", "business_signals_json", "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn("campaign_organizations", "business_status_confidence", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("campaign_organizations", "evidence_source_count", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("campaign_organizations", "source_quality_score", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("resume_documents", "quality_score", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("resume_documents", "quality_grade", "TEXT NOT NULL DEFAULT 'UNASSESSED'");
+  ensureColumn("resume_documents", "quality_reasons_json", "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn("resume_documents", "quality_metrics_json", "TEXT NOT NULL DEFAULT '{}'");
+  ensureColumn("resume_documents", "graph_eligible", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("resume_documents", "search_eligible", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("resume_documents", "quality_assessed_at", "TEXT");
+  ensureColumn("organization_facts", "classification", "TEXT NOT NULL DEFAULT 'FACT'");
+  ensureColumn("organization_facts", "evidence_quote", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("organization_facts", "source_quality_score", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("resume_documents", "source_search_task_id", "TEXT REFERENCES search_tasks(id) ON DELETE SET NULL");
+  ensureColumn("resume_documents", "source_strategy_version_id", "TEXT REFERENCES strategy_versions(id) ON DELETE SET NULL");
+  ensureColumn("resume_documents", "experiment_assignment_id", "TEXT REFERENCES experiment_assignments(id) ON DELETE SET NULL");
+  ensureColumn("search_tasks", "strategy_version_id", "TEXT REFERENCES strategy_versions(id) ON DELETE SET NULL");
+  ensureColumn("search_tasks", "experiment_assignment_id", "TEXT REFERENCES experiment_assignments(id) ON DELETE SET NULL");
+  ensureColumn("candidate_origins", "dedupe_key", "TEXT NOT NULL DEFAULT ''");
+  db.exec(`UPDATE candidate_origins SET dedupe_key = campaign_id || '|' || person_id || '|' || COALESCE(resume_id, '') || '|' || COALESCE(search_task_id, '') WHERE dedupe_key = ''`);
+  db.exec(`DELETE FROM candidate_origins WHERE id NOT IN (SELECT MIN(id) FROM candidate_origins GROUP BY dedupe_key)`);
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_candidate_origins_dedupe ON candidate_origins(dedupe_key)");
+  db.exec(`UPDATE resume_documents SET quality_score = 85, quality_grade = 'HIGH_CONFIDENCE', graph_eligible = 1, search_eligible = 1,
+    quality_reasons_json = '["历史已入图谱简历，等待下次重建重新评分"]', quality_assessed_at = COALESCE(analyzed_at, updated_at)
+    WHERE status = 'READY' AND quality_score = 0`);
+  db.exec(`UPDATE organization_facts SET status = 'PROMOTED_FACT', source_quality_score = COALESCE((SELECT quality_score FROM resume_documents WHERE id = source_resume_id), 85)
+    WHERE status = 'EVIDENCE_BACKED'`);
+  db.exec(`UPDATE campaign_organizations SET
+    evidence_source_count = COALESCE((SELECT COUNT(DISTINCT e.resume_id) FROM employments e JOIN resume_documents r ON r.id = e.resume_id WHERE e.organization_id = campaign_organizations.organization_id AND r.campaign_id = campaign_organizations.campaign_id AND r.graph_eligible = 1), evidence_source_count),
+    source_quality_score = COALESCE((SELECT ROUND(AVG(r.quality_score)) FROM employments e JOIN resume_documents r ON r.id = e.resume_id WHERE e.organization_id = campaign_organizations.organization_id AND r.campaign_id = campaign_organizations.campaign_id AND r.graph_eligible = 1), source_quality_score)`);
+  db.exec("UPDATE campaign_organizations SET status = 'AI_LEARNED' WHERE status IN ('PENDING_REVIEW', 'APPROVED')");
+  backfillOrganizationBusinessProfiles();
   db.exec("UPDATE resume_documents SET retention_until = NULL WHERE retention_until IS NOT NULL");
 }
 

@@ -14,7 +14,7 @@ export function SearchTaskWorkbench({ tasks, initialQuery = "", canManage = fals
   const [message, setMessage] = useState("");
   const filtered = useMemo(() => tasks.filter((task) => [task.title, task.companyName, task.campaignName, ...task.query.keywords, ...task.query.locations].join(" ").toLowerCase().includes(query.trim().toLowerCase())), [query, tasks]);
   async function copy(task: SearchTask) {
-    await navigator.clipboard.writeText([task.companyName, task.query.keywords[0], task.query.locations[0]].filter(Boolean).join(" "));
+    await navigator.clipboard.writeText([task.companyName, task.query.keywords[0]].filter(Boolean).join(" "));
     setCopied(task.id); window.setTimeout(() => setCopied(null), 1500);
   }
   async function begin(task: SearchTask) {

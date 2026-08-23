@@ -19,15 +19,15 @@
 - 搜索任务工作台：公司、职位、地区组合，优先级、复制关键词、打开 BOSS、结果反馈。
 - 持续学习：贝叶斯平滑、小步更新、`0.65-1.35` 权重边界、至少 3 个样本后生成人审建议。
 - Sub2API 配置页：Base URL、`gpt-5.6`、Chat Completions/Responses API、连接测试。
-- 密钥保护：API Key 和插件访问码以 AES-256-GCM 密文存入 SQLite，接口不回传明文。
+- 密钥保护：API Key 和插件访问码以 AES-256-GCM 密文存入数据库，接口不回传明文。
 - 公司发现：AI 只从授权简历的任职经历中发现并补全公司，以列表展示人才数、职位、市场、渠道、评分和简历证据。
-- Chrome MV3 侧边栏插件 V0.6：支持 Chrome Web Store 在线安装与版本检测；正式模式提供端口自动探测、内部登录、任务领取/执行/反馈、结果页单屏判断、简历关键帧扫描和招呼语草稿；商店审核模式无需后台、BOSS 账号或真实候选人数据即可离线验证核心流程。
+- Chrome MV3 独立工具窗口插件 V0.7：支持 Chrome Web Store 在线安装与版本检测；正式模式提供端口自动探测、内部登录、任务领取/执行/反馈、结果页单屏判断、简历关键帧扫描和招呼语草稿；商店审核模式无需后台、BOSS 账号或真实候选人数据即可离线验证核心流程。
 - 人员登录与权限管理：服务端会话、人员启停、密码重置、多角色分配、按模块配置查看/管理权限；菜单、页面和 API 同步鉴权。
 - 无 AI 降级：未配置 Sub2API 时可解析带明确字段的结构化文本，不会生成虚构公司或候选人。
 
 ## 合规边界
 
-插件没有 content script，不读取 BOSS DOM、页面文本、Cookie、密码或验证码，也不自动翻页、滚动、打开候选人或发送消息。HR 开始扫描后，每点击一次侧边栏的“截取当前帧”，插件才会在内存中截取当前标签页的一帧；完成时最多发送 10 帧至已配置的 Sub2API，图片和视频均不落盘。招呼语仅生成草稿，由 HR 审核后手工发送。
+插件没有 content script，不读取 BOSS DOM、页面文本、Cookie、密码或验证码，也不自动翻页、滚动、打开候选人或发送消息。HR 开始扫描后，每点击一次独立工具窗口中的“截取当前帧”，插件才会在内存中截取原始 Chrome 窗口当前标签页的一帧；完成时最多发送 10 帧至已配置的 Sub2API，图片和视频均不落盘。招呼语仅生成草稿，由 HR 审核后手工发送。
 
 ## 本地运行
 
@@ -51,7 +51,7 @@ pnpm dev
 pnpm worker
 ```
 
-也可在“数据源与设置”页面直接配置 Sub2API，不需要把 Key 写入环境变量。配置保存在 `.data/hunting.db`，本机加密密钥位于 `.data/settings.key`；生产环境应显式设置 `SETTINGS_ENCRYPTION_KEY`。
+也可在“数据源与设置”页面直接配置 Sub2API，不需要把 Key 写入环境变量。本地 SQLite 开发时配置保存在 `.data/hunting.db`；生产环境配置保存在 PostgreSQL，并应保持 `SETTINGS_ENCRYPTION_KEY` 在迁移前后不变。
 
 ## Chrome 插件
 
@@ -67,8 +67,9 @@ pnpm extension:pack
 
 1. 在设置页保存插件访问码，并按需配置 Sub2API、启用截图分析。
 2. 打开 `chrome://extensions`，启用开发者模式。
-3. 加载仓库中的 `extension/` 目录，或下载并解压 `artifacts/hunting-extension-v0.6.10.zip` 后加载。
-4. 点击扩展图标。插件会检测 `localhost:3000`，登录后即可领取任务、回填反馈或扫描 BOSS 简历。
+3. 先移除旧扩展，再加载仓库中的 `extension/` 目录，或下载并解压 `artifacts/hunting-extension-v0.7.2.zip` 后加载。
+4. 点击扩展图标。插件会立即打开约 420px 宽的独立工具窗口并检测 `localhost:3000`，登录后即可领取任务、回填反馈或扫描 BOSS 简历。
+5. 扫描新标签页前，保持目标 BOSS 候选人页为活动页并点击一次扩展图标；这是 Chrome 授予 `tabCapture` 临时权限的必要用户操作，工具窗口会自动继续等待中的扫描。
 
 详细说明见 [extension/README.md](extension/README.md)。
 
@@ -90,10 +91,29 @@ pnpm extension:pack
 
 ## Docker
 
+生产环境使用 PostgreSQL 16。首次部署前先在 `.env` 中设置稳定且高强度的 `POSTGRES_PASSWORD`、`SETTINGS_ENCRYPTION_KEY` 和管理员初始密码。
+
 ```bash
-docker compose up --build
+docker compose up -d postgres
+docker compose up -d --build web worker
 ```
 
-Compose 同时启动 Web 与 Worker，SQLite 数据保存在共享的 `hunting-data` volume。生产环境建议增加企业 SSO、战役级权限、对象存储、备份、审计告警并迁移到 PostgreSQL。
+从现有 SQLite 停机迁移时，先停止 Web 与 Worker，再执行 dry-run 和正式迁移：
+
+```bash
+docker compose stop web worker
+docker compose --profile tools run --rm migrate pnpm db:migrate:postgres -- --source /app/legacy/hunting.db --dry-run
+docker compose --profile tools run --rm migrate
+docker compose up -d web worker
+```
+
+也可在宿主机执行：
+
+```bash
+pnpm db:migrate:postgres -- --source .data/hunting.db --dry-run
+pnpm db:migrate:postgres -- --source .data/hunting.db
+```
+
+迁移工具只读打开 SQLite，正式迁移前自动备份，并校验逐表数量、外键、简历内容指纹、用户密码哈希、角色权限及 AI/插件加密配置。目标 PostgreSQL 非空时会拒绝覆盖。Compose 使用 `postgres-data` 保存数据库、`hunting-files` 保存简历文件，并保留 `hunting-data` 供旧 SQLite 迁移和回滚。
 
 产品边界、流程、数据模型和验收口径见 [docs/PRODUCT_REQUIREMENTS.md](docs/PRODUCT_REQUIREMENTS.md)。
